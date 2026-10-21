@@ -6,100 +6,158 @@
 <title>Campaign Performance Analyser</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
 <style>
-  :root{--bg:#0f1419;--card:#1a2129;--ink:#e6edf3;--mut:#8b98a5;--ok:#2ea043;--bad:#f85149;--accent:#4493f8;--line:#283039;--warn:#d29922}
+  :root{
+    color-scheme: light;
+    --bg:#f4f5f8; --card:#ffffff; --soft:#f8f9fb; --ink:#111827; --ink2:#374151; --mut:#6b7280; --line:#e5e7eb; --line2:#eef0f3;
+    --accent:#4f46e5; --accent-soft:#eef2ff;
+    --ok:#059669; --ok-soft:#ecfdf5; --bad:#e11d48; --bad-soft:#fff1f2; --warn:#d97706; --warn-soft:#fffbeb;
+    --email:#4f46e5; --sms:#0d9488; --push:#9333ea;
+    --shadow:0 1px 2px rgba(16,24,40,.04),0 1px 3px rgba(16,24,40,.06);
+    --radius:12px;
+  }
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif}
-  .wrap{max-width:1180px;margin:0 auto;padding:24px}
-  h1{font-size:22px;margin:0 0 2px} .sub{color:var(--mut);margin-bottom:20px}
-  .banner{padding:12px 16px;border-radius:8px;margin-bottom:20px;font-weight:600}
-  .banner.good{background:rgba(46,160,67,.15);border:1px solid var(--ok)}
-  .banner.warn{background:rgba(248,81,73,.12);border:1px solid var(--bad)}
-  .banner.info{background:rgba(68,147,248,.12);border:1px solid var(--accent)}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:14px/1.5 Inter,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1240px;margin:0 auto;padding:28px 24px 48px}
+  .num,.kpi .val,td,th{font-variant-numeric:tabular-nums}
 
-  /* ---- upload panel ---- */
-  .uploader{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px;margin-bottom:24px}
-  .uploader h2{font-size:16px;margin:0 0 4px}
+  /* ---- header ---- */
+  .hdr{display:flex;gap:14px;align-items:flex-start;margin-bottom:22px}
+  .mark{display:flex;gap:3px;align-items:flex-end;height:34px;padding:7px 8px;background:var(--ink);border-radius:9px;flex:none}
+  .mark span{display:block;width:5px;border-radius:2px;background:#fff}
+  .mark span:nth-child(1){height:9px;background:var(--sms)} .mark span:nth-child(2){height:15px;background:#a5b4fc} .mark span:nth-child(3){height:20px}
+  .eyebrow{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+  h1{font-size:24px;line-height:1.2;margin:2px 0 4px;font-weight:700;letter-spacing:-.02em}
+  .sub{color:var(--mut);font-size:13.5px}
+
+  /* ---- banners ---- */
+  .banner{padding:11px 14px;border-radius:10px;margin-bottom:18px;font-weight:500;font-size:13.5px;border:1px solid}
+  .banner.good{background:var(--ok-soft);border-color:#a7f3d0;color:#065f46}
+  .banner.warn{background:var(--warn-soft);border-color:#fcd34d;color:#92400e}
+  .banner.info{background:var(--accent-soft);border-color:#c7d2fe;color:#3730a3}
+
+  /* ---- panels ---- */
+  .uploader,.saved,.card,.kpi,.dsbar{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+  .uploader{padding:22px;margin-bottom:24px}
+  .uploader h2,.saved h2{font-size:15px;font-weight:600;margin:0 0 4px}
   .uploader p.hint{color:var(--mut);margin:0 0 16px;font-size:13px}
-  .drop{border:2px dashed var(--line);border-radius:10px;padding:26px;text-align:center;color:var(--mut);transition:.15s;cursor:pointer}
-  .drop.drag{border-color:var(--accent);color:var(--ink);background:rgba(68,147,248,.06)}
+  .drop{border:1.5px dashed #cbd0d8;border-radius:10px;padding:30px;text-align:center;color:var(--mut);transition:.15s;cursor:pointer;background:var(--soft)}
+  .drop:hover{border-color:#a5b4fc}
+  .drop.drag{border-color:var(--accent);color:var(--ink);background:var(--accent-soft)}
   .drop strong{color:var(--ink)}
   .or{display:flex;align-items:center;gap:12px;color:var(--mut);margin:16px 0;font-size:12px}
   .or::before,.or::after{content:"";flex:1;height:1px;background:var(--line)}
   .gs{display:flex;gap:10px;flex-wrap:wrap}
-  .gs input{flex:1;min-width:240px;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:10px 12px;font-size:13px}
-  .btn{background:var(--accent);color:#fff;border:none;border-radius:8px;padding:10px 16px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap}
-  .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--ink)}
-  .btn.danger{background:transparent;border:1px solid var(--bad);color:var(--bad)}
-  .btn.sm{padding:6px 12px;font-size:12px}
-  .btn:hover{filter:brightness(1.08)}
-  .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;align-items:center}
+  .gs input,.inp{background:#fff;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:9px 12px;font:inherit;font-size:13px}
+  .gs input{flex:1;min-width:240px}
+  .gs input:focus,.inp:focus,.dsbar select:focus{outline:2px solid #c7d2fe;border-color:var(--accent)}
+  .btn{background:var(--accent);color:#fff;border:1px solid var(--accent);border-radius:8px;padding:9px 15px;font:600 13px/1.2 inherit;cursor:pointer;white-space:nowrap;transition:.12s}
+  .btn:hover{filter:brightness(1.07)}
+  .btn.ghost{background:#fff;border-color:var(--line);color:var(--ink2)}
+  .btn.ghost:hover{background:var(--soft);filter:none;border-color:#d1d5db}
+  .btn.danger{background:#fff;border-color:#fecdd3;color:var(--bad)}
+  .btn.danger:hover{background:var(--bad-soft);filter:none}
+  .btn.sm{padding:6px 11px;font-size:12px}
+  .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px;align-items:center}
   .status{margin-top:12px;font-size:13px}
   .status.err{color:var(--bad)} .status.ok{color:var(--ok)}
-  details.fmt{margin-top:14px;color:var(--mut);font-size:12px}
-  details.fmt summary{cursor:pointer;color:var(--accent)}
-  details.fmt code{background:var(--bg);padding:1px 5px;border-radius:4px;color:var(--ink)}
+  details.fmt{margin-top:16px;color:var(--mut);font-size:12.5px;border-top:1px solid var(--line2);padding-top:12px}
+  details.fmt summary{cursor:pointer;color:var(--accent);font-weight:500}
+  details.fmt code{background:var(--soft);border:1px solid var(--line2);padding:0 5px;border-radius:4px;color:var(--ink2)}
 
-  /* ---- saved datasets index ---- */
-  .saved{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px;margin-bottom:24px}
-  .saved h2{font-size:16px;margin:0 0 12px}
-  .dsrow{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+  .saved{padding:18px 20px;margin-bottom:24px}
+  .saved h2{margin-bottom:8px}
+  .dsrow{display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--line2)}
   .dsrow:last-child{border-bottom:none}
   .dsrow .meta{flex:1;min-width:0}
   .dsrow .nm{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .dsrow .dt{color:var(--mut);font-size:12px}
   .empty{color:var(--mut);font-size:13px}
 
-  /* ---- dashboard ---- */
+  /* ---- dashboard controls ---- */
   #dash{display:none}
-  .dsbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--card);border:1px solid var(--line);
-         border-radius:10px;padding:10px 14px;margin-bottom:18px}
-  .dsbar label{color:var(--mut);font-size:12px;text-transform:uppercase;letter-spacing:.04em}
-  .dsbar select{background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 10px;font-size:13px;max-width:340px}
+  .dsbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;margin-bottom:10px}
+  .dsbar label{color:var(--mut);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;min-width:62px}
+  .dsbar select{background:#fff;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:7px 10px;font:inherit;font-size:13px;max-width:340px}
   .dsbar .spacer{flex:1}
-  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-bottom:26px}
-  .kpi{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px}
-  .kpi .lab{color:var(--mut);font-size:12px;text-transform:uppercase;letter-spacing:.04em}
-  .kpi .val{font-size:26px;font-weight:700;margin-top:6px}
-  .kpi .dlt{font-size:12px;margin-top:4px} .up{color:var(--ok)} .down{color:var(--bad)}
-  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:26px}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px}
-  .card h3{margin:0 0 14px;font-size:15px}
-  table{width:100%;border-collapse:collapse;font-size:13px}
-  th,td{padding:9px 10px;text-align:right;border-bottom:1px solid var(--line)}
-  th:first-child,td:first-child{text-align:left}
-  th{color:var(--mut);font-weight:600;cursor:pointer;user-select:none}
-  th:hover{color:var(--ink)}
-  .verdict{font-size:12px;color:var(--mut);max-width:280px;text-align:left;white-space:normal}
-  .pill{padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700}
-  .pill.email{background:rgba(68,147,248,.18);color:var(--accent)}
-  .pill.sms{background:rgba(46,160,67,.18);color:var(--ok)}
-  .pill.other{background:rgba(139,152,165,.18);color:var(--mut)}
-  .pill.push{background:rgba(163,113,247,.18);color:#a371f7}
-  .pill.whatsapp{background:rgba(210,153,34,.18);color:var(--warn)}
-  /* ---- channel segregation ---- */
-  #chanBar{margin-top:-10px;margin-bottom:16px}
-  .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
-  .seg button{background:transparent;border:none;border-right:1px solid var(--line);color:var(--mut);padding:7px 14px;font:600 12px/1 inherit;cursor:pointer}
-  .seg button:last-child{border-right:none}
-  .seg button .n{opacity:.7;font-weight:400;margin-left:5px}
-  .seg button.on{background:var(--accent);color:#fff}
+  #periodBar,#chanBar{margin-top:0}
+  #chanBar{margin-bottom:20px}
+  .inp.sm{padding:6px 8px;font-size:12px}
+  .seg{display:inline-flex;background:var(--soft);border:1px solid var(--line);border-radius:9px;padding:3px;gap:2px}
+  .seg button{background:transparent;border:none;border-radius:6px;color:var(--ink2);padding:6px 12px;font:600 12.5px/1 inherit;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+  .seg button .n{font-weight:500;color:var(--mut);background:var(--line2);border-radius:10px;padding:2px 7px;font-size:11px}
+  .seg button.on{background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(16,24,40,.12)}
+  .seg button.on .n{background:var(--accent-soft);color:var(--accent)}
+  .seg button[data-ch=email]::before,.seg button[data-ch=sms]::before,.seg button[data-ch=push]::before{content:"";width:8px;height:8px;border-radius:50%}
+  .seg button[data-ch=email]::before{background:var(--email)} .seg button[data-ch=sms]::before{background:var(--sms)} .seg button[data-ch=push]::before{background:var(--push)}
   .seg button:hover:not(.on){color:var(--ink)}
-  #chanTbl tr.sel td{background:rgba(68,147,248,.08)}
+
+  /* ---- KPIs ---- */
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(142px,1fr));gap:12px;margin-bottom:22px}
+  .kpi{padding:15px 16px;position:relative;overflow:hidden}
+  .kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent);opacity:.85}
+  .kpi .lab{color:var(--mut);font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+  .kpi .val{font-size:24px;font-weight:700;margin-top:6px;letter-spacing:-.02em;color:var(--ink)}
+  .kpi .dlt{display:inline-block;font-size:11.5px;font-weight:600;margin-top:6px;padding:2px 7px;border-radius:20px}
+  .kpi .dlt.up{color:var(--ok);background:var(--ok-soft)} .kpi .dlt.down{color:var(--bad);background:var(--bad-soft)}
+  .up{color:var(--ok)} .down{color:var(--bad)}
+
+  /* ---- cards & charts ---- */
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:22px}
+  .card{padding:18px 20px}
+  .card h3{margin:0 0 14px;font-size:14.5px;font-weight:600;letter-spacing:-.01em}
+  .card h3 span{font-size:12.5px}
+  #summary{color:var(--ink2)!important;line-height:1.65}
+  @media(max-width:820px){.grid2{grid-template-columns:1fr}}
+
+  /* ---- tables ---- */
+  table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
+  th,td{padding:10px 12px;text-align:right;border-bottom:1px solid var(--line2);white-space:nowrap}
+  th:first-child,td:first-child,th:nth-child(2),td:nth-child(2){text-align:left}
+  #tbl th:nth-child(3),#tbl td:nth-child(3){text-align:left}
+  th{position:sticky;top:0;background:var(--soft);color:var(--mut);font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;cursor:pointer;user-select:none;border-bottom:1px solid var(--line)}
+  th:first-child{border-top-left-radius:8px} th:last-child{border-top-right-radius:8px}
+  th:hover{color:var(--ink)}
+  th.sorted{color:var(--accent)}
+  th.sorted::after{content:" ↓";font-size:10px} th.sorted.asc::after{content:" ↑"}
+  tbody tr:hover td,#tbl tr:hover td{background:#fafbff}
+  td.nm{white-space:normal;min-width:190px;max-width:300px;font-weight:500;color:var(--ink)}
+  .tblwrap{overflow:auto;max-height:640px;border:1px solid var(--line);border-radius:10px}
+  .tblwrap table th:first-child,.tblwrap table th:last-child{border-radius:0}
+  .verdict{font-size:12px;color:var(--mut);display:inline-block;text-align:left;white-space:nowrap;line-height:1.45}
+  .vb{display:inline-block;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:2px 7px;border-radius:5px;margin-right:6px}
+  .vb.win{background:var(--ok-soft);color:var(--ok)} .vb.under{background:var(--bad-soft);color:var(--bad)} .vb.ok{background:var(--line2);color:var(--ink2)}
+  .pill{padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;display:inline-flex;align-items:center;gap:5px}
+  .pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+  .pill.email{background:var(--accent-soft);color:var(--email)}
+  .pill.sms{background:#f0fdfa;color:var(--sms)}
+  .pill.push{background:#faf5ff;color:var(--push)}
+  .pill.whatsapp{background:var(--warn-soft);color:var(--warn)}
+  .pill.other{background:var(--line2);color:var(--mut)}
+  #chanTbl tr.sel td{background:var(--accent-soft)}
   #chanTbl tr[data-ch]{cursor:pointer}
-  #chanTbl tr[data-ch]:hover td{background:rgba(255,255,255,.03)}
-  .note{color:var(--mut);font-size:12px;margin-top:10px}
-  @media(max-width:780px){.grid2{grid-template-columns:1fr}}
-  .inp{background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font:inherit}
-  .inp.sm{padding:5px 7px;font-size:12px}
-  .inp::-webkit-calendar-picker-indicator{filter:invert(.7)}
-  #periodBar{margin-top:-10px;margin-bottom:16px}
-  .foot{color:var(--mut);font-size:12px;margin-top:20px;border-top:1px solid var(--line);padding-top:14px}
+  #chanTbl th{cursor:default}
+  .note{color:var(--mut);font-size:12px;margin-top:12px}
+  .emptyst{height:250px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:var(--mut);font-size:13px;gap:6px;background:var(--soft);border:1px dashed var(--line);border-radius:10px;padding:20px}
+  .emptyst b{color:var(--ink2);font-weight:600}
+  .emptyst code{background:#fff;border:1px solid var(--line2);padding:0 5px;border-radius:4px}
+  .inp::-webkit-calendar-picker-indicator{opacity:.6}
+  .foot{color:var(--mut);font-size:12px;margin-top:22px;border-top:1px solid var(--line);padding-top:14px}
 </style>
 </head>
 <body><div class="wrap">
-  <h1>Campaign Performance Analyser</h1>
-  <div class="sub">Upload campaign data to generate the analysis. Datasets are saved in this browser and stay until you delete them.</div>
+  <header class="hdr">
+    <div class="mark" aria-hidden="true"><span></span><span></span><span></span></div>
+    <div>
+      <div class="eyebrow">Email + SMS campaign analytics</div>
+      <h1>Campaign Performance Analyser</h1>
+      <div class="sub">Upload campaign data to generate the analysis. Datasets are saved in this browser and stay until you delete them.</div>
+    </div>
+  </header>
 
   <!-- ============ SAVED DATASETS INDEX ============ -->
   <div class="saved" id="savedPanel">
@@ -206,7 +264,7 @@
       <div id="summary" style="color:var(--mut);white-space:pre-wrap"></div></div>
 
     <div class="card" id="chanCard" style="margin-bottom:26px"><h3>Channel breakdown <span style="color:var(--mut);font-weight:400">(click a row to view that channel only)</span></h3>
-      <div style="overflow-x:auto"><table id="chanTbl"></table></div>
+      <div class="tblwrap" style="max-height:none"><table id="chanTbl"></table></div>
       <div class="note" id="chanNote"></div></div>
 
     <div class="grid2">
@@ -224,7 +282,7 @@
       <div id="host_disc"></div></div>
 
     <div class="card"><h3>Campaigns <span style="color:var(--mut);font-weight:400">(click a header to sort)</span></h3>
-      <div style="overflow-x:auto"><table id="tbl"></table></div></div>
+      <div class="tblwrap"><table id="tbl"></table></div></div>
 
     <div class="foot" id="foot"></div>
   </div>
@@ -277,9 +335,9 @@ Prior period - sms,sms,,0,0,,,0,,,12450,0,0,285,61400,,,baseline`;
    ============================================================ */
 const SYN = {
   campaign:["campaign","campaign_name","name","campaignname"],
-  channel:["channel","medium","type","campaign_channel","campaign_type","message_type","channel_type","message_channel"],
+  channel:["channel","send_channel","medium","type","campaign_channel","campaign_type","message_type","channel_type","message_channel"],
   sends:["sends","sent","send","sends_count","recipients","total_recipients","audience"],
-  deliveries:["deliveries","delivered","successful_deliveries","delivery"],
+  deliveries:["deliveries","delivered","successful_deliveries","delivery","total_deliveries"],
   failed:["failed","failed_deliveries","undelivered","failed_sends","failed_delivery"],
   spend:["spend","cost","sms_spend","sms_cost","credit_cost","credits_cost","total_cost"],
   opens:["opens","unique_opens","open"],
@@ -289,17 +347,17 @@ const SYN = {
   sessions:["sessions","session","visits","ga_sessions"],
   add_to_cart:["add_to_cart","addtocart","atc","adds_to_cart","cart"],
   checkout:["checkout","checkouts","reached_checkout","begin_checkout"],
-  orders:["orders","order","purchases","conversions","transactions","unique_placed_order","placed_order","unique_placed_orders"],
-  revenue:["revenue","sales","total_revenue","order_value","gmv"],
-  unsubscribes:["unsubscribes","unsubscribe","unsubs","unsub"],
-  spam:["spam","spam_complaints","complaints"],
-  bounces:["bounces","bounce","bounced"],
+  orders:["orders","order","purchases","conversions","transactions","unique_placed_order","placed_order","unique_placed_orders","count_of_unique_conversions","unique_conversions","total_conversions","placed_orders"],
+  revenue:["revenue","sales","total_revenue","order_value","gmv","conversion_value","placed_order_value","total_conversion_value"],
+  unsubscribes:["unsubscribes","unsubscribe","unsubs","unsub","unique_unsubscribes","total_unsubscribes"],
+  spam:["spam","spam_complaints","complaints","total_spam_complaints"],
+  bounces:["bounces","bounce","bounced","total_bounced","total_bounces"],
   discount_revenue:["discount_revenue","discounted_revenue","discount_sales","revenue_on_discount"],
   new_customers:["new_customers","new_customer_orders","first_time_orders","new_buyers"],
   period:["period","window","segment"],
   subject:["subject","subject_line"],
-  list:["list","segment_list","audience_list"],
-  send_time:["send_time","sendtime","sent_at","send_date","send_datetime"],
+  list:["list","segment_list","audience_list","audiences_list","audiences"],
+  send_time:["send_time","sendtime","sent_at","send_date","send_datetime","message_send_date_time","message_send_datetime","send_date_time","date"],
   variant:["variant","variant_name"],
   verdict:["verdict","note","notes","comment"]
 };
@@ -331,7 +389,7 @@ function inferChannel(name, opens){
   const n=String(name||'').toLowerCase();
   if(/\b(sms|mms|text)\b/.test(n)) return 'sms';
   if(/\be-?mail\b|newsletter/.test(n)) return 'email';
-  if(opens!=null) return 'email';
+  if(opens>0) return 'email';
   return 'other';
 }
 function channelHintFromFile(fname){
@@ -342,17 +400,34 @@ function channelHintFromFile(fname){
 }
 // Rewrites one file's rows to canonical column names, so files with different
 // headers (Klaviyo email vs SMS exports) can live in one dataset.
+// Each canonical row keeps its original columns in _raw (and the file-name
+// channel hint in _hint), so improvements to header matching re-apply to
+// datasets that were saved earlier.
 function canonicalizeRows(rows, fname){
   if(!rows.length) return rows;
-  const keys=new Set(); rows.forEach(r=>Object.keys(r).forEach(k=>keys.add(k)));
-  const hmap=buildHeaderMap([...keys]);
-  const hint=channelHintFromFile(fname);
-  return rows.map(r=>{
+  const fileHint=channelHintFromFile(fname);
+  const src=rows.map(r=> r && r._raw ? {raw:r._raw, hint:r._hint||''} : {raw:r, hint:fileHint});
+  const maps={};
+  return src.map(({raw,hint})=>{
+    const sig=Object.keys(raw).join('\u0001');
+    const hmap=maps[sig]||(maps[sig]=buildHeaderMap(Object.keys(raw)));
     const o={};
-    Object.keys(SYN).forEach(k=>{ o[k]= hmap[k]? (r[hmap[k]]==null?'':r[hmap[k]]) : ''; });
+    Object.keys(SYN).forEach(k=>{ o[k]= hmap[k]? (raw[hmap[k]]==null?'':raw[hmap[k]]) : ''; });
     if(!String(o.channel).trim() && hint){ o.channel=hint; }
+    o._raw=raw; o._hint=hint;
     return o;
   });
+}
+function refreshRows(rows){ return (rows.length && rows[0] && rows[0]._raw)? canonicalizeRows(rows,'') : rows; }
+// Klaviyo writes "2026-08-01 14:30:00-0400"; normalise to ISO so every browser parses it.
+function parseDate(raw){
+  const s=String(raw==null?'':raw).trim(); if(!s) return null;
+  const m=s.match(/^(\d{4}-\d{2}-\d{2})(?:[ T](\d{2}:\d{2}(?::\d{2})?)(?:\.\d+)?)?\s*(Z|[+-]\d{2}:?\d{2})?$/i);
+  let d;
+  if(m){ let tz=m[3]||''; if(tz && tz!=='Z' && tz.toUpperCase()!=='Z' && tz.indexOf(':')<0) tz=tz.slice(0,3)+':'+tz.slice(3);
+         d=new Date(m[1]+'T'+(m[2]||'00:00:00')+tz); }
+  else d=new Date(s);
+  return isNaN(d.getTime())? null : d;
 }
 function toNum(v){ if(v==null||v==="")return null; const n=Number(String(v).replace(/[$,\s%]/g,"")); return isNaN(n)?null:n; }
 
@@ -373,6 +448,7 @@ function analyze(rawRows, opts){
     o.channel = canonChannel(rawCh);
     o.channel_inferred = !o.channel;
     if(!o.channel) o.channel = inferChannel(o.campaign, o.opens);
+    if(o.channel==='sms'){ if(!o.opens) o.opens=null; if(!o.total_opens) o.total_opens=null; }
     metaFields.forEach(f=>{ o[f]= hmap[f]? r[hmap[f]] : null; });
     o.period = (hmap.period ? String(r[hmap.period]||"").toLowerCase().trim() : "current") || "current";
     o.verdict = hmap.verdict ? r[hmap.verdict] : null;
@@ -452,7 +528,7 @@ function analyze(rawRows, opts){
     portfolio:{ campaign_count:campaigns.length, revenue:pRev, orders:pOrd, sessions:pSess,
       aov: pOrd? pRev/pOrd:null, blended_session_to_order: pSess? pOrd/pSess:null,
       open_rate: pOpenReach? pOpens/pOpenReach:null, click_rate: pReach? pClicks/pReach:null,
-      delivery_rate: pDelivRate, spend: pSpend||null, roas: pSpend? pRev/pSpend:null,
+      delivery_rate: pDelivRate, spend: pSpend||null, rev_per_recipient: pReach? pRev/pReach : null, reach: pReach||null, roas: pSpend? pRev/pSpend:null,
       mixed: new Set(campaigns.map(c=>c.channel)).size>1,
       has_engagement:(pOpens>0||pClicks>0), has_web_funnel:(pSess>0), vs_baseline },
     portfolio_narrative: autoPortfolio(campaigns,pRev,vs_baseline,channels,VIEW),
@@ -526,13 +602,34 @@ const fmtUSD2 = n => n==null? '—' : '$'+Number(n).toLocaleString('en-US',{mini
 const fmtPct = n => n==null? '—' : (n*100).toFixed(1)+'%';
 const fmtInt = n => n==null? '—' : Number(n).toLocaleString('en-US');
 const css = k => getComputedStyle(document.documentElement).getPropertyValue(k).trim();
-const chanColor = c => ({email:css('--accent'),sms:css('--ok'),push:'#a371f7',whatsapp:css('--warn')}[c]||css('--mut'));
+const chanColor = c => ({email:css('--email'),sms:css('--sms'),push:css('--push'),whatsapp:css('--warn')}[c]||css('--mut'));
 let CHARTS=[];
-function freshCanvas(hostId,height){ const h=document.getElementById(hostId);
-  h.innerHTML=`<canvas${height?` height="${height}"`:''}></canvas>`; return h.firstElementChild; }
+function freshCanvas(hostId,px){ const h=document.getElementById(hostId);
+  h.innerHTML=`<div style="position:relative;height:${px||280}px"><canvas></canvas></div>`; return h.querySelector('canvas'); }
+const trunc=(t,n)=>{ t=String(t||''); return t.length>n? t.slice(0,n-1)+'…' : t; };
+function chartTheme(){
+  if(typeof Chart==='undefined') return;
+  const d=Chart.defaults;
+  d.font.family='Inter,-apple-system,"Segoe UI",Roboto,sans-serif'; d.font.size=12;
+  d.color=css('--mut'); d.borderColor=css('--line2'); d.maintainAspectRatio=false;
+  d.plugins.legend.labels.usePointStyle=true; d.plugins.legend.labels.boxWidth=8; d.plugins.legend.labels.boxHeight=8;
+  d.plugins.tooltip.backgroundColor='#111827'; d.plugins.tooltip.padding=10; d.plugins.tooltip.cornerRadius=8;
+  d.elements.bar.borderRadius=4; d.elements.bar.borderSkipped=false;
+}
+function fmtVerdict(t){
+  t=escapeHtml(t||''); const m=t.match(/^(Win|Underperform|OK)\s*[—-]\s*/);
+  if(!m) return `<span class="verdict">${t}</span>`;
+  const cls={Win:'win',Underperform:'under',OK:'ok'}[m[1]];
+  // Compact form for the table; the full sentence is on hover.
+  const med=t.match(/(\d+(?:\.\d+)?%)\s+(?:[A-Za-z]+\s+)?median/);
+  const label={Win:'Win',Underperform:'Below par',OK:'On par'}[m[1]];
+  const short=med? `vs ${med[1]} median` : (m[1]==='OK'? 'near median' : t.slice(m[0].length));
+  return `<span class="verdict" title="${t}"><span class="vb ${cls}">${label}</span>${short}</span>`;
+}
 
 function render(DATA, keepScroll){
   CHARTS.forEach(c=>c.destroy()); CHARTS=[];
+  chartTheme();
   showDash();
   const VIEW=DATA.meta.view, ALL=DATA.allChannels||DATA.channels||[];
   renderChanSeg(ALL, VIEW);
@@ -553,10 +650,11 @@ function render(DATA, keepScroll){
     ['Orders',fmtInt(p.orders),vb&&delta(vb.orders_delta)],
     ['AOV',fmtUSD(p.aov),vb&&delta(vb.aov_delta)],
   ];
+  if(p.rev_per_recipient!=null) kpis.push(['Revenue / recipient',fmtUSD2(p.rev_per_recipient),'']);
   if(p.delivery_rate!=null) kpis.push(['Delivery rate',fmtPct(p.delivery_rate),'']);
   if(p.has_engagement){
     if(p.open_rate!=null) kpis.push([p.mixed?'Open rate (email)':'Open rate',fmtPct(p.open_rate),'']);
-    kpis.push([p.mixed?'Click rate (all channels)':'Click rate',fmtPct(p.click_rate),'']);
+    kpis.push([p.mixed?'Click rate (blended)':'Click rate',fmtPct(p.click_rate),'']);
   }
   if(p.roas!=null){ kpis.push(['Spend',fmtUSD(p.spend),'']); kpis.push(['ROAS',p.roas.toFixed(1)+'×','']); }
   if(p.has_web_funnel){ kpis.push(['Sessions',fmtInt(p.sessions),vb&&delta(vb.sessions_delta)]); kpis.push(['Session → order',fmtPct(p.blended_session_to_order),'']); }
@@ -568,23 +666,23 @@ function render(DATA, keepScroll){
   renderChanTable(ALL, VIEW);
 
   // channel doughnut — share across all channels, current view emphasised
-  CHARTS.push(new Chart(freshCanvas('host_chanRev'),{type:'doughnut',
+  CHARTS.push(new Chart(freshCanvas('host_chanRev',250),{type:'doughnut',
     data:{labels:ALL.map(c=>chanLabel(c.channel)),datasets:[{data:ALL.map(c=>c.revenue),
       backgroundColor:ALL.map(c=> (VIEW==='all'||c.channel===VIEW)? chanColor(c.channel) : chanColor(c.channel)+'40'),
-      borderColor:css('--card')}]},
-    options:{plugins:{legend:{labels:{color:css('--ink')}},
+      borderColor:css('--card'),borderWidth:3,hoverOffset:6}]},
+    options:{cutout:'64%',plugins:{legend:{position:'right',labels:{color:css('--ink2'),padding:14}},
       tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${fmtUSD(ctx.raw)} (${fmtPct(ALL[ctx.dataIndex].rev_share)})`}}}}}));
 
   // baseline
   if(vb){
-    CHARTS.push(new Chart(freshCanvas('host_baseChart'),{type:'bar',
+    CHARTS.push(new Chart(freshCanvas('host_baseChart',250),{type:'bar',
       data:{labels:['Revenue','Orders','Sessions'],datasets:[
-        {label:'Baseline',backgroundColor:css('--mut'),data:[vb.baseline.revenue,vb.baseline.orders,vb.baseline.sessions]},
+        {label:'Baseline',backgroundColor:'#cbd5e1',data:[vb.baseline.revenue,vb.baseline.orders,vb.baseline.sessions]},
         {label:'Current',backgroundColor:css('--accent'),data:[p.revenue,p.orders,p.sessions]}]},
       options:{scales:{x:{ticks:{color:css('--mut')}},y:{ticks:{color:css('--mut')},type:'logarithmic'}},plugins:{legend:{labels:{color:css('--ink')}}}}}));
   }else{ document.getElementById('host_baseChart').innerHTML = DATA.meta.baselineDropped
-      ? `<p style="color:var(--mut)">Your baseline rows aren't tagged with a channel, so they can't be compared against ${chanLabel(VIEW)} alone. Add baseline rows with channel=${chanLabel(VIEW)}, or switch to All channels.</p>`
-      : '<p style="color:var(--mut)">Add rows with period=baseline to compare.</p>'; }
+      ? `<p class="emptyst">Your baseline rows aren't tagged with a channel, so they can't be compared against ${chanLabel(VIEW)} alone. Add baseline rows with channel=${chanLabel(VIEW)}, or switch to All channels.</p>`
+      : '<div class="emptyst"><b>No baseline in this data</b><span>Add rows with <code>period = baseline</code> (one per channel) to compare this period against a previous one.</span></div>'; }
 
   // funnel (dynamic stages)
   const top=DATA.campaigns[0];
@@ -592,9 +690,10 @@ function render(DATA, keepScroll){
   if(top){const f=top.funnel;
     const STAGES=[['sends','Sends'],['deliveries','Delivered'],['opens','Opens'],['clicks','Clicks'],['sessions','Sessions'],['add_to_cart','Add to cart'],['checkout','Checkout'],['orders','Orders']];
     const present=STAGES.filter(([k])=>f[k]!=null);
-    CHARTS.push(new Chart(freshCanvas('host_funnel',120),{type:'bar',
+    CHARTS.push(new Chart(freshCanvas('host_funnel',Math.max(180,present.length*38+50)),{type:'bar',
       data:{labels:present.map(s=>s[1]),datasets:[{label:(top.name||'Top campaign')+' · '+chanLabel(top.channel),backgroundColor:chanColor(top.channel),data:present.map(s=>f[s[0]])}]},
-      options:{indexAxis:'y',scales:{x:{type:'logarithmic',ticks:{color:css('--mut')}},y:{ticks:{color:css('--ink')}}},plugins:{legend:{labels:{color:css('--ink')}}}}}));
+      options:{indexAxis:'y',scales:{x:{type:'logarithmic',grid:{color:css('--line2')}},y:{grid:{display:false},ticks:{color:css('--ink2'),font:{weight:'500'}}}},
+        plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>' '+fmtInt(ctx.raw)}}}}}));
   }
 
   // engagement
@@ -608,27 +707,29 @@ function render(DATA, keepScroll){
       : p.mixed? 'Engagement — click rate by campaign (open rate shown for email only)'
       : `${chanLabel(VIEW==='all'?(ec[0]&&ec[0].channel):VIEW)} engagement (top campaigns)`;
     const ds=[];
-    if(hasOpen) ds.push({label:'Open rate (email)',backgroundColor:'rgba(139,152,165,.55)',data:ec.map(c=>c.rates.open_rate!=null?+(c.rates.open_rate*100).toFixed(1):null)});
+    if(hasOpen) ds.push({label:'Open rate (email)',backgroundColor:'#c7d2fe',data:ec.map(c=>c.rates.open_rate!=null?+(c.rates.open_rate*100).toFixed(1):null)});
     ds.push({label:'Click rate',backgroundColor:ec.map(c=>chanColor(c.channel)+(hasOpen?'cc':'')),data:ec.map(c=>c.rates.click_rate!=null?+(c.rates.click_rate*100).toFixed(1):null)});
-    CHARTS.push(new Chart(freshCanvas('host_eng',110),{type:'bar',
-      data:{labels:ec.map(c=>c.name+' ('+chanLabel(c.channel)+')'),datasets:ds},
-      options:{scales:{x:{ticks:{color:css('--mut'),maxRotation:60,minRotation:30}},y:{ticks:{color:css('--mut')}}},plugins:{legend:{labels:{color:css('--ink')}}}}}));
+    CHARTS.push(new Chart(freshCanvas('host_eng',Math.max(200,ec.length*(hasOpen?44:30)+60)),{type:'bar',
+      data:{labels:ec.map(c=>trunc(c.name,38)+' · '+chanLabel(c.channel)),datasets:ds},
+      options:{indexAxis:'y',scales:{x:{ticks:{callback:v=>v+'%'},grid:{color:css('--line2')}},y:{grid:{display:false},ticks:{color:css('--ink2')}}},
+        plugins:{legend:{position:'top',align:'end'},tooltip:{callbacks:{title:it=>ec[it[0].dataIndex].name,label:ctx=>` ${ctx.dataset.label}: ${ctx.raw}%`}}}}}));
   }else{ document.getElementById('engCard').style.display='none'; }
 
   // discount
   const dd=DATA.campaigns.filter(c=>c.discount_dependency!=null).slice(0,12);
   if(dd.length){
     document.getElementById('discCard').style.display='';
-    CHARTS.push(new Chart(freshCanvas('host_disc',110),{type:'bar',
-      data:{labels:dd.map(c=>c.name||c.utm.campaign),datasets:[{label:'% of revenue on discount',backgroundColor:'#d29922',data:dd.map(c=>+(c.discount_dependency*100).toFixed(1))}]},
-      options:{scales:{x:{ticks:{color:css('--mut')}},y:{ticks:{color:css('--mut')}}},plugins:{legend:{labels:{color:css('--ink')}}}}}));
+    CHARTS.push(new Chart(freshCanvas('host_disc',Math.max(180,dd.length*30+50)),{type:'bar',
+      data:{labels:dd.map(c=>trunc(c.name||c.utm.campaign,40)),datasets:[{label:'% of revenue on discount',backgroundColor:css('--warn'),data:dd.map(c=>+(c.discount_dependency*100).toFixed(1))}]},
+      options:{indexAxis:'y',scales:{x:{max:100,ticks:{callback:v=>v+'%'},grid:{color:css('--line2')}},y:{grid:{display:false},ticks:{color:css('--ink2')}}},
+        plugins:{legend:{display:false},tooltip:{callbacks:{title:it=>dd[it[0].dataIndex].name,label:ctx=>` ${ctx.raw}% of revenue on discount`}}}}}));
   }else{ document.getElementById('discCard').style.display='none'; }
 
   // table (adaptive columns)
   const get=(o,path)=>path.split('.').reduce((a,k)=>a==null?null:a[k],o);
   const anyCol=k=>DATA.campaigns.some(c=>get(c,k)!=null);
   const cols=[
-    ['name','Campaign', c=>c.name||c.utm.campaign||'—'],
+    ['name','Campaign', c=>escapeHtml(c.name||c.utm.campaign||'—')],
     ['channel','Ch.', c=>`<span class="pill ${c.channel||'other'}"${c.inferred?' title="Inferred — no channel column"':''}>${chanLabel(c.channel||'other')}${c.inferred?'*':''}</span>`],
     ['revenue','Revenue', c=>fmtUSD(c.revenue)],
     ['funnel.orders','Orders', c=>fmtInt(c.funnel.orders)],
@@ -645,14 +746,14 @@ function render(DATA, keepScroll){
   if(anyCol('rates.bounce_rate')) cols.push(['rates.bounce_rate','Bounce%', c=>fmtPct(c.rates.bounce_rate)]);
   if(anyCol('discount_dependency')) cols.push(['discount_dependency','Disc%', c=>fmtPct(c.discount_dependency)]);
   if(anyCol('new_customer_share'))  cols.push(['new_customer_share','New%', c=>fmtPct(c.new_customer_share)]);
-  cols.push(['narrative','Verdict', c=>`<span class="verdict">${c.narrative||''}</span>`]);
+  cols.splice(2,0,['narrative','Verdict', c=>fmtVerdict(c.narrative)]);
 
   let sortKey='revenue',sortDir=-1;
   function drawTable(){
     const rows=[...DATA.campaigns].sort((a,b)=>{const x=get(a,sortKey),y=get(b,sortKey); if(x==null)return 1;if(y==null)return -1;return (x>y?1:x<y?-1:0)*sortDir;});
     const t=document.getElementById('tbl');
-    t.innerHTML='<tr>'+cols.map(c=>`<th data-k="${c[0]}">${c[1]}</th>`).join('')+'</tr>'+
-      rows.map(c=>'<tr>'+cols.map(col=>`<td>${col[2](c)}</td>`).join('')+'</tr>').join('');
+    t.innerHTML='<thead><tr>'+cols.map(c=>`<th data-k="${c[0]}" class="${c[0]===sortKey?'sorted'+(sortDir>0?' asc':''):''}">${c[1]}</th>`).join('')+'</tr></thead><tbody>'+
+      rows.map(c=>'<tr>'+cols.map((col,i)=>`<td${i===0?' class="nm"':''}>${col[2](c)}</td>`).join('')+'</tr>').join('')+'</tbody>';
     t.querySelectorAll('th').forEach(th=>th.onclick=()=>{const k=th.dataset.k; if(k===sortKey)sortDir*=-1;else{sortKey=k;sortDir=-1;} drawTable();});
   }
   drawTable();
@@ -732,10 +833,7 @@ var PERIOD = {grain:'all', bucket:null, from:null, to:null};
 // so it works on raw Klaviyo exports too.
 function rowDate(row, hmap){
   if(!hmap.send_time) return null;
-  var raw = row[hmap.send_time];
-  if(raw==null || raw==='') return null;
-  var d = new Date(raw);
-  return isNaN(d.getTime()) ? null : d;
+  return parseDate(row[hmap.send_time]);
 }
 
 function isBaselineRow(row, hmap){
@@ -870,6 +968,11 @@ function wirePeriod(){
 function openDataset(id){
   const ds=getDataset(id); if(!ds){ showHome(); return; }
   setCurrent(id);
+  if(ds.rows.length && ds.rows[0]._raw){
+    ds.rows=refreshRows(ds.rows);
+    const idx=loadIndex(); const d=idx.find(x=>x.id===id);
+    if(d){ d.rows=ds.rows; d.summary=summarize(ds.rows); saveIndex(idx); }
+  }
   // A new dataset starts unfiltered; a stale bucket from the last one would
   // silently hide most of it.
   PERIOD={grain:'all', bucket:null, from:null, to:null};
