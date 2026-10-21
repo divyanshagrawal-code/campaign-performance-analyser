@@ -692,8 +692,25 @@ function render(DATA, keepScroll){
     const present=STAGES.filter(([k])=>f[k]!=null);
     CHARTS.push(new Chart(freshCanvas('host_funnel',Math.max(180,present.length*38+50)),{type:'bar',
       data:{labels:present.map(s=>s[1]),datasets:[{label:(top.name||'Top campaign')+' · '+chanLabel(top.channel),backgroundColor:chanColor(top.channel),data:present.map(s=>f[s[0]])}]},
-      options:{indexAxis:'y',scales:{x:{type:'logarithmic',grid:{color:css('--line2')}},y:{grid:{display:false},ticks:{color:css('--ink2'),font:{weight:'500'}}}},
-        plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>' '+fmtInt(ctx.raw)}}}}}));
+      options:{indexAxis:'y',layout:{padding:{right:110}},
+        scales:{x:{type:'logarithmic',min:1,
+                   ticks:{maxRotation:0,autoSkip:false,callback:v=>{const l=Math.log10(v);return Math.abs(l-Math.round(l))<1e-9? fmtInt(v):'';}},
+                   grid:{color:ctx=>{const v=ctx.tick&&ctx.tick.value;const l=v?Math.log10(v):0;return v&&Math.abs(l-Math.round(l))<1e-9? css('--line'):'transparent';}}},
+                y:{grid:{display:false},ticks:{color:css('--ink2'),font:{weight:'500'}}}},
+        plugins:{legend:{display:false},
+          tooltip:{callbacks:{label:ctx=>{const i=ctx.dataIndex,v=ctx.raw,prev=i? f[present[i-1][0]] : null;
+            return ' '+fmtInt(v)+(prev?`  ·  ${fmtPct(v/prev)} of ${present[i-1][1].toLowerCase()}`:'');}}}}},
+      plugins:[{id:'funnelLabels',afterDatasetsDraw(chart){
+        const {ctx}=chart, meta=chart.getDatasetMeta(0);
+        ctx.save(); ctx.textBaseline='middle';
+        meta.data.forEach((bar,i)=>{
+          const v=f[present[i][0]]; if(v==null) return;
+          const prev=i? f[present[i-1][0]] : null, txt=fmtInt(v);
+          ctx.font='600 12px Inter,sans-serif'; ctx.fillStyle=css('--ink'); ctx.fillText(txt, bar.x+8, bar.y);
+          if(prev){ const w=ctx.measureText(txt).width; ctx.font='500 11.5px Inter,sans-serif'; ctx.fillStyle=css('--mut');
+            ctx.fillText(fmtPct(v/prev), bar.x+14+w, bar.y); }
+        });
+        ctx.restore(); }}]}));
   }
 
   // engagement
@@ -853,11 +870,11 @@ function isoWeek(d){
   return {year:t.getUTCFullYear(), week:wk};
 }
 
-// Display label only — the bucket value stays sortable (2026-10, 2026-W41).
+// Display label only — the bucket value stays sortable (2026-10, 2026-W41); months show as yy-Mmm.
 var MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 function bucketLabel(b){
   var m=/^(\d{4})-(\d{2})$/.exec(b);
-  if(m) return m[1]+'-'+MON[+m[2]-1];
+  if(m) return m[1].slice(2)+'-'+MON[+m[2]-1];   // yy-Mmm, e.g. 26-Oct
   return b;
 }
 function bucketKey(d, grain){
