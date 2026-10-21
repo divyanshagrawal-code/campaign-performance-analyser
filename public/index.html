@@ -142,6 +142,23 @@
   #chanTbl tr[data-ch]{cursor:pointer}
   #chanTbl th{cursor:default}
   .note{color:var(--mut);font-size:12px;margin-top:12px}
+  .cardhd{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+  .cardhd h3{margin:0;flex:1;min-width:260px}
+  .tblctl{display:flex;gap:8px;align-items:center}
+  .pills{display:inline-flex;gap:4px;flex-wrap:nowrap}
+  .subt{font-size:11.5px;color:var(--mut);font-weight:400;margin-top:2px}
+  .subt.ind{padding-left:22px}
+  .caret{display:inline-block;width:16px;margin-right:6px;color:var(--accent);font-size:12px;text-align:center}
+  .caret.ph{visibility:hidden}
+  #tbl tr.grp{cursor:pointer}
+  #tbl tr.grp td{background:#fff}
+  #tbl tr.grp.open td{background:#f5f6ff;border-bottom-color:#e0e4ff}
+  #tbl tr.grp:hover td{background:#f5f6ff}
+  #tbl tr.child td{background:var(--soft);font-size:12.5px;color:var(--ink2)}
+  #tbl tr.child td.nm{font-weight:400}
+  .childnm{padding-left:22px;position:relative}
+  .childnm::before{content:"";position:absolute;left:7px;top:-12px;bottom:50%;width:9px;border-left:1.5px solid #d4d8e8;border-bottom:1.5px solid #d4d8e8;border-bottom-left-radius:4px}
+  .dte{display:inline-block;min-width:44px;font-size:11px;font-weight:600;color:var(--mut);margin-right:6px}
   .emptyst{height:250px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:var(--mut);font-size:13px;gap:6px;background:var(--soft);border:1px dashed var(--line);border-radius:10px;padding:20px}
   .emptyst b{color:var(--ink2);font-weight:600}
   .emptyst code{background:#fff;border:1px solid var(--line2);padding:0 5px;border-radius:4px}
@@ -281,7 +298,17 @@
     <div class="card" id="discCard" style="margin-bottom:26px"><h3>Discount dependency by campaign</h3>
       <div id="host_disc"></div></div>
 
-    <div class="card"><h3>Campaigns <span style="color:var(--mut);font-weight:400">(click a header to sort)</span></h3>
+    <div class="card">
+      <div class="cardhd">
+        <h3>Campaigns <span style="color:var(--mut);font-weight:400" id="tblHint">(click a header to sort)</span></h3>
+        <div class="tblctl">
+          <div class="seg" id="viewSeg">
+            <button data-v="grouped" class="on">By campaign</button>
+            <button data-v="sends">All sends</button>
+          </div>
+          <button class="btn ghost sm" id="expandAll">Expand all</button>
+        </div>
+      </div>
       <div class="tblwrap"><table id="tbl"></table></div></div>
 
     <div class="foot" id="foot"></div>
@@ -359,7 +386,8 @@ const SYN = {
   list:["list","segment_list","audience_list","audiences_list","audiences"],
   send_time:["send_time","sendtime","sent_at","send_date","send_datetime","message_send_date_time","message_send_datetime","send_date_time","date"],
   variant:["variant","variant_name"],
-  verdict:["verdict","note","notes","comment"]
+  verdict:["verdict","note","notes","comment"],
+  group:["campaign_group","group","parent_campaign","campaign_family","campaign_parent"]
 };
 const norm = s => String(s||"").toLowerCase().replace(/[^a-z0-9]/g,"");
 function buildHeaderMap(headers){
@@ -369,7 +397,7 @@ function buildHeaderMap(headers){
   return map;
 }
 const numFields=["sends","deliveries","failed","spend","opens","total_opens","clicks","total_clicks","sessions","add_to_cart","checkout","orders","revenue","unsubscribes","spam","bounces","discount_revenue","new_customers"];
-const metaFields=["subject","list","send_time","variant"];
+const metaFields=["subject","list","send_time","variant","group"];
 /* ---- channel canonicalisation ---- */
 const CHAN_LABEL={email:'Email',sms:'SMS',push:'Push',whatsapp:'WhatsApp',other:'Other'};
 const CHAN_ORDER=['email','sms','push','whatsapp','other'];
@@ -482,7 +510,8 @@ function analyze(rawRows, opts){
     const reach = r.deliveries!=null ? r.deliveries : r.sends;
     return {
       name:r.campaign, channel:r.channel, variants:r.variants,
-      subject:r.subject, list:r.list, send_time:r.send_time,
+      subject:r.subject, list:r.list, send_time:r.send_time, group:r.group,
+      disc_rev:r.discount_revenue, new_cust:r.new_customers,
       revenue, aov: orders? revenue/orders : null,
       spend:r.spend, roas:(r.spend? revenue/r.spend : null), cpo:(r.spend&&orders? r.spend/orders : null),
       inferred:r.channel_inferred,
@@ -498,6 +527,7 @@ function analyze(rawRows, opts){
       narrative: r.verdict || autoVerdict(r, current), utm:{campaign:r.campaign}
     };
   }).sort((a,b)=> (b.revenue||0)-(a.revenue||0));
+  const campaignGroups = buildGroups(campaigns);
 
   const sum=(arr,f)=>arr.reduce((s,c)=>s+(f(c)||0),0);
   const pRev=sum(campaigns,c=>c.revenue), pOrd=sum(campaigns,c=>c.funnel.orders), pSess=sum(campaigns,c=>c.funnel.sessions);
@@ -531,9 +561,100 @@ function analyze(rawRows, opts){
       delivery_rate: pDelivRate, spend: pSpend||null, rev_per_recipient: pReach? pRev/pReach : null, reach: pReach||null, roas: pSpend? pRev/pSpend:null,
       mixed: new Set(campaigns.map(c=>c.channel)).size>1,
       has_engagement:(pOpens>0||pClicks>0), has_web_funnel:(pSess>0), vs_baseline },
-    portfolio_narrative: autoPortfolio(campaigns,pRev,vs_baseline,channels,VIEW),
+    portfolio_narrative: autoPortfolio(campaigns,pRev,vs_baseline,channels,VIEW,campaignGroups),
+    groups: campaignGroups,
     campaigns
   };
+}
+/* ============================================================
+   Campaign grouping — clubs the sends of one campaign together
+   (email + SMS versions, resends, dated re-sends). Rules:
+   1. An explicit campaign_group / group column wins.
+   2. Otherwise the name is cleaned: trailing "Resend…", "(resend)",
+      "(clone)", "copy" and trailing dates like "7 sept" / "8-sept" are
+      removed; sends whose cleaned names match (ignoring case, spaces,
+      underscores, punctuation) are one campaign. The date prefix
+      (e.g. 08_12_) is kept, so a promo that recurs on a new date is a
+      new campaign.
+   3. A resend whose cleaned name has a different date prefix joins the
+      campaign with the same name (minus prefix) sent up to 14 days earlier.
+   ============================================================ */
+const RESEND_RX=/\bre-?send\b|\bclone\b|\bcopy\b/i;
+function campaignBaseName(n){
+  let s=String(n||'').trim(); const resend=RESEND_RX.test(s);
+  s=s.replace(/\s*[\(\[]?\s*(re-?send|clone|copy)\b.*$/i,'');
+  s=s.replace(/[\s_-]+\d{1,2}(st|nd|rd|th)?[\s_-]*(jan|feb|mar|apr|may|jun|jul|aug|sept?|oct|nov|dec)[a-z]*\.?\s*$/i,'');
+  return {label:s.trim()||String(n||''), resend};
+}
+const gkey=s=>String(s).toLowerCase().replace(/[^a-z0-9]/g,'');
+const gbase=s=>gkey(String(s).replace(/^\s*\d{1,2}[_\-\/.]\d{1,2}[_\s-]*/,''));
+function buildGroups(camps){
+  const order=camps.map((c,i)=>({c,d:parseDate(c.send_time),i}))
+    .sort((a,b)=>((a.d?a.d.getTime():0)-(b.d?b.d.getTime():0))||a.i-b.i);
+  const groups=new Map();
+  order.forEach(({c,d})=>{
+    let k,label;
+    if(c.group && String(c.group).trim()){ label=String(c.group).trim(); k='g:'+gkey(label); }
+    else{
+      const b=campaignBaseName(c.name); label=b.label; k=gkey(label);
+      if(!groups.has(k) && b.resend && d){
+        const bb=gbase(label); let best=null;
+        groups.forEach((g,gk)=>{ if(g.base===bb && g.first && d-g.first>=0 && d-g.first<=14*864e5) best=gk; });
+        if(best) k=best;
+      }
+    }
+    if(!groups.has(k)) groups.set(k,{key:k,name:label,base:gbase(label),first:d,members:[]});
+    const g=groups.get(k); g.members.push(c); if(d && (!g.first || d<g.first)) g.first=d;
+    c.group_key=k; c._date=d;
+  });
+  const out=[...groups.values()].map(aggregateGroup);
+  // Campaign-level verdict: revenue per recipient vs the median campaign.
+  // Click-to-order can't be used here because a campaign mixes channels.
+  const med=median(out.map(g=>g.rates.rev_per_recipient).filter(v=>v!=null));
+  out.forEach(g=>{
+    const v=g.rates.rev_per_recipient;
+    if(v==null || out.length<2 || !med){ g.narrative=''; return; }
+    const tag = v>=med*1.15? 'Win' : v<med*0.7? 'Underperform' : 'OK';
+    g.narrative=`${tag} — ${fmtUSD2(v)} revenue per recipient vs ${fmtUSD2(med)} median across campaigns.`;
+  });
+  return out.sort((a,b)=>(b.revenue||0)-(a.revenue||0));
+}
+function aggregateGroup(g){
+  const m=g.members.slice().sort((a,b)=>((a._date?a._date.getTime():0)-(b._date?b._date.getTime():0)));
+  const S=(arr,f)=>arr.reduce((t,c)=>t+(f(c)||0),0);
+  const has=(f)=>m.filter(c=>f(c)!=null);
+  const reachOf=c=> c.funnel.deliveries!=null? c.funnel.deliveries : (c.funnel.sends||0);
+  const F=k=>{ const h=has(c=>c.funnel[k]); return h.length? S(h,c=>c.funnel[k]) : null; };
+  const revenue=S(m,c=>c.revenue), orders=F('orders')||0, clicks=F('clicks'), reach=S(m,reachOf);
+  const sends=F('sends'), deliveries=F('deliveries'), sessions=F('sessions');
+  const op=has(c=>c.funnel.opens), opens=op.length? S(op,c=>c.funnel.opens):null, openReach=S(op,reachOf);
+  const dv=m.filter(c=>c.funnel.deliveries!=null && c.funnel.sends), un=has(c=>c.counts.unsubscribes), bo=has(c=>c.counts.bounces);
+  const sp=has(c=>c.spend), spend=sp.length? S(sp,c=>c.spend) : null;
+  const dr=has(c=>c.disc_rev), nc=has(c=>c.new_cust);
+  const channels=[...new Set(m.map(c=>c.channel))].sort((a,b)=>CHAN_ORDER.indexOf(a)-CHAN_ORDER.indexOf(b));
+  const dates=m.map(c=>c._date).filter(Boolean);
+  return { isGroup:true, key:g.key, name:g.name, members:m, channels,
+    channel: channels.length===1? channels[0] : 'mixed',
+    first: dates.length? dates[0] : null, last: dates.length? dates[dates.length-1] : null,
+    revenue, aov: orders? revenue/orders : null, spend, roas: spend? revenue/spend : null,
+    funnel:{sends, deliveries, opens, clicks, sessions, add_to_cart:F('add_to_cart'), checkout:F('checkout'), orders},
+    rates:{ click_to_order: clicks? orders/clicks : null, session_to_order: sessions? orders/sessions : null,
+      open_rate: openReach? opens/openReach : null, click_rate: (clicks!=null && reach)? clicks/reach : null,
+      delivery_rate: dv.length? S(dv,c=>c.funnel.deliveries)/S(dv,c=>c.funnel.sends) : null,
+      rev_per_recipient: reach? revenue/reach : null,
+      unsub_rate: un.length && S(un,reachOf)? S(un,c=>c.counts.unsubscribes)/S(un,reachOf) : null,
+      bounce_rate: bo.length && S(bo,c=>c.funnel.sends)? S(bo,c=>c.counts.bounces)/S(bo,c=>c.funnel.sends) : null },
+    counts:{},
+    discount_dependency: dr.length && revenue? S(dr,c=>c.disc_rev)/revenue : null,
+    new_customer_share: nc.length && orders? S(nc,c=>c.new_cust)/orders : null,
+    utm:{campaign:g.name} };
+}
+function groupSentence(groups, sends){
+  if(!groups || groups.length>=sends) return '';
+  const multi=groups.filter(g=>g.members.length>1).length;
+  const top=groups[0];
+  return `\nThese ${sends} sends belong to ${groups.length} campaigns (${multi} with more than one send — email + SMS versions and resends). `
+    + `Top campaign overall: ${top.name} at ${fmtUSD(top.revenue)} across ${top.members.length} send${top.members.length>1?'s':''}.`;
 }
 function autoVerdict(r, all){
   const ctr = r.clicks? r.orders/r.clicks : null;
@@ -548,17 +669,25 @@ function autoVerdict(r, all){
   if(med && ctr<med*0.7)  return `Underperform — ${(ctr*100).toFixed(1)}% click-to-order, well below the ${(med*100).toFixed(1)}% ${ch} median.`;
   return `OK — ${(ctr*100).toFixed(1)}% click-to-order, near the ${ch} median.`;
 }
-function autoPortfolio(camps,rev,vb,channels,view){
+function autoPortfolio(camps,rev,vb,channels,view,groups){
   if(!camps.length) return "";
   const top=camps[0];
+  const G=groups&&groups.length<camps.length? groups : null;
+  const unit=G? 'send' : 'campaign';
   const lift = vb&&vb.revenue_delta!=null? ` (${vb.revenue_delta>=0?"+":""}${(vb.revenue_delta*100).toFixed(0)}% vs baseline)` : "";
   const scope = view==='all'? '' : chanLabel(view)+' ';
-  let txt = `${camps.length} ${scope}campaigns drove ${fmtUSD(rev)} in attributed revenue${lift}. Top campaign: ${top.name} at ${fmtUSD(top.revenue)}.`;
+  let txt = G
+    ? `${G.length} ${scope}campaigns (${camps.length} sends) drove ${fmtUSD(rev)} in attributed revenue${lift}. `
+      + `Top campaign: ${G[0].name} at ${fmtUSD(G[0].revenue)} across ${G[0].members.length} send${G[0].members.length>1?'s':''}. `
+      + `Best single send: ${top.name}${top.channel?' ('+chanLabel(top.channel)+')':''} at ${fmtUSD(top.revenue)}.`
+    : `${camps.length} ${scope}campaigns drove ${fmtUSD(rev)} in attributed revenue${lift}. Top campaign: ${top.name} at ${fmtUSD(top.revenue)}.`;
   if(view==='all' && channels && channels.length>1){
-    txt += '\nBy channel: ' + channels.map(c=>`${chanLabel(c.channel)} ${fmtUSD(c.revenue)} (${fmtPct(c.rev_share)}, ${c.campaigns} campaign${c.campaigns>1?'s':''}`
+    txt += '\nBy channel: ' + channels.map(c=>`${chanLabel(c.channel)} ${fmtUSD(c.revenue)} (${fmtPct(c.rev_share)}, ${c.campaigns} ${unit}${c.campaigns>1?'s':''}`
       + (c.rev_per_recipient!=null? `, ${fmtUSD2(c.rev_per_recipient)}/recipient` : '') + ')').join(' · ') + '.';
   }
-  return txt + ' Per-campaign verdicts are in the table below.';
+  if(G){ const multi=G.filter(g=>g.members.length>1).length;
+    txt += `\n${multi} of the ${G.length} campaigns went out more than once (email + SMS versions and resends); the table groups them — expand a campaign to see each send.`; }
+  return txt + ' Verdicts are in the table below.';
 }
 // Per-channel rollup of the *current* (non-baseline) merged rows.
 function channelBreakdown(_unused, rows){
@@ -621,9 +750,9 @@ function fmtVerdict(t){
   if(!m) return `<span class="verdict">${t}</span>`;
   const cls={Win:'win',Underperform:'under',OK:'ok'}[m[1]];
   // Compact form for the table; the full sentence is on hover.
-  const med=t.match(/(\d+(?:\.\d+)?%)\s+(?:[A-Za-z]+\s+)?median/);
+  const med=t.match(/(\$\d[\d,]*(?:\.\d+)?|\d+(?:\.\d+)?%)\s+(?:[A-Za-z]+\s+)?median/);
   const label={Win:'Win',Underperform:'Below par',OK:'On par'}[m[1]];
-  const short=med? `vs ${med[1]} median` : (m[1]==='OK'? 'near median' : t.slice(m[0].length));
+  const short=med? `vs ${med[1]}${/^\$/.test(med[1])?'/rcpt':''} median` : (m[1]==='OK'? 'near median' : t.slice(m[0].length));
   return `<span class="verdict" title="${t}"><span class="vb ${cls}">${label}</span>${short}</span>`;
 }
 
@@ -636,7 +765,8 @@ function render(DATA, keepScroll){
 
   const b=document.getElementById('banner');
   const viewTxt = VIEW==='all'? '' : chanLabel(VIEW)+' only · ';
-  let btxt = `${viewTxt}${DATA.portfolio.campaign_count} campaigns · ${fmtUSD(DATA.portfolio.revenue)} total revenue`
+  const nG=(DATA.groups||[]).length, nS=DATA.portfolio.campaign_count;
+  let btxt = `${viewTxt}${nG && nG<nS? `${nG} campaigns (${nS} sends)` : `${nS} campaigns`} · ${fmtUSD(DATA.portfolio.revenue)} total revenue`
     + (DATA.portfolio.vs_baseline? ' · baseline comparison active'
        : DATA.meta.baselineDropped? ` · baseline hidden (no baseline rows tagged ${chanLabel(VIEW)})` : ' · no baseline rows in data');
   if(DATA.meta.inferred) btxt += ` · ⚠ channel inferred for ${DATA.meta.inferred} campaign${DATA.meta.inferred>1?'s':''} (no channel column) — check the Ch. column`;
@@ -747,7 +877,8 @@ function render(DATA, keepScroll){
   const anyCol=k=>DATA.campaigns.some(c=>get(c,k)!=null);
   const cols=[
     ['name','Campaign', c=>escapeHtml(c.name||c.utm.campaign||'—')],
-    ['channel','Ch.', c=>`<span class="pill ${c.channel||'other'}"${c.inferred?' title="Inferred — no channel column"':''}>${chanLabel(c.channel||'other')}${c.inferred?'*':''}</span>`],
+    ['channel','Ch.', c=> c.isGroup? `<span class="pills">${c.channels.map(ch=>`<span class="pill ${ch}">${chanLabel(ch)}</span>`).join('')}</span>`
+       : `<span class="pill ${c.channel||'other'}"${c.inferred?' title="Inferred — no channel column"':''}>${chanLabel(c.channel||'other')}${c.inferred?'*':''}</span>`],
     ['revenue','Revenue', c=>fmtUSD(c.revenue)],
     ['funnel.orders','Orders', c=>fmtInt(c.funnel.orders)],
     ['aov','AOV', c=>fmtUSD(c.aov)],
@@ -766,12 +897,50 @@ function render(DATA, keepScroll){
   cols.splice(2,0,['narrative','Verdict', c=>fmtVerdict(c.narrative)]);
 
   let sortKey='revenue',sortDir=-1;
+  const groups=DATA.groups||[];
+  const grouping = groups.length < DATA.campaigns.length;   // anything to club together?
+  document.getElementById('viewSeg').style.display = grouping? '' : 'none';
+  const cmp=(a,b)=>{const x=get(a,sortKey),y=get(b,sortKey); if(x==null)return 1;if(y==null)return -1;return (x>y?1:x<y?-1:0)*sortDir;};
+  const dShort=d=> d? d.getDate()+' '+MON[d.getMonth()] : '';
+  const cells=(c,nameHtml)=>cols.map((col,i)=>`<td${i===0?' class="nm"':''}>${i===0?nameHtml:col[2](c)}</td>`).join('');
   function drawTable(){
-    const rows=[...DATA.campaigns].sort((a,b)=>{const x=get(a,sortKey),y=get(b,sortKey); if(x==null)return 1;if(y==null)return -1;return (x>y?1:x<y?-1:0)*sortDir;});
+    const view = grouping? TABLE_VIEW : 'sends';
     const t=document.getElementById('tbl');
-    t.innerHTML='<thead><tr>'+cols.map(c=>`<th data-k="${c[0]}" class="${c[0]===sortKey?'sorted'+(sortDir>0?' asc':''):''}">${c[1]}</th>`).join('')+'</tr></thead><tbody>'+
-      rows.map(c=>'<tr>'+cols.map((col,i)=>`<td${i===0?' class="nm"':''}>${col[2](c)}</td>`).join('')+'</tr>').join('')+'</tbody>';
+    let body='';
+    if(view==='sends'){
+      body=[...DATA.campaigns].sort(cmp).map(c=>'<tr>'+cells(c, escapeHtml(c.name||'—')
+        + (c._date? `<div class="subt">${dShort(c._date)}</div>`:''))+'</tr>').join('');
+    }else{
+      [...groups].sort(cmp).forEach(g=>{
+        if(g.members.length===1){
+          const c=g.members[0];   // single send: campaign-level figures (same as the send), campaign-level verdict
+          body+='<tr>'+cells(g, `<span class="caret ph"></span>${escapeHtml(c.name||'—')}`
+            + (c._date? `<div class="subt ind">${dShort(c._date)} · single send</div>`:''))+'</tr>';
+          return;
+        }
+        const open=OPEN_GROUPS.has(g.key);
+        const span = g.first? (dShort(g.first)+(g.last && g.last-g.first>864e5? ' – '+dShort(g.last) : '')) : '';
+        body+=`<tr class="grp${open?' open':''}" data-g="${escapeHtml(g.key)}">`+cells(g,
+          `<span class="caret">${open?'▾':'▸'}</span><b>${escapeHtml(g.name)}</b>`
+          + `<div class="subt ind">${g.members.length} sends${span?' · '+span:''}</div>`)+'</tr>';
+        if(open) g.members.forEach((c,i)=>{
+          body+='<tr class="child">'+cells(c, `<div class="childnm"><span class="dte">${dShort(c._date)||'—'}</span>${escapeHtml(c.name||'—')}</div>`)+'</tr>';
+        });
+      });
+    }
+    t.innerHTML='<thead><tr>'+cols.map(c=>`<th data-k="${c[0]}" class="${c[0]===sortKey?'sorted'+(sortDir>0?' asc':''):''}">${c[0]==='name'&&view==='grouped'?'Campaign / sends':c[1]}</th>`).join('')+'</tr></thead><tbody>'+body+'</tbody>';
     t.querySelectorAll('th').forEach(th=>th.onclick=()=>{const k=th.dataset.k; if(k===sortKey)sortDir*=-1;else{sortKey=k;sortDir=-1;} drawTable();});
+    t.querySelectorAll('tr.grp').forEach(tr=>tr.onclick=()=>{const k=tr.dataset.g; OPEN_GROUPS.has(k)?OPEN_GROUPS.delete(k):OPEN_GROUPS.add(k); drawTable();});
+    const multi=groups.filter(g=>g.members.length>1);
+    const ea=document.getElementById('expandAll');
+    ea.style.display = view==='grouped' && multi.length? '' : 'none';
+    ea.textContent = multi.length && multi.every(g=>OPEN_GROUPS.has(g.key))? 'Collapse all' : 'Expand all';
+    ea.onclick=()=>{ const all=multi.every(g=>OPEN_GROUPS.has(g.key)); multi.forEach(g=>all?OPEN_GROUPS.delete(g.key):OPEN_GROUPS.add(g.key)); drawTable(); };
+    document.getElementById('tblHint').textContent = view==='grouped'
+      ? `(${groups.length} campaigns from ${DATA.campaigns.length} sends · click a campaign to see its sends · click a header to sort)`
+      : `(${DATA.campaigns.length} sends · click a header to sort)`;
+    document.querySelectorAll('#viewSeg button').forEach(b=>{ b.classList.toggle('on', b.dataset.v===view);
+      b.onclick=()=>{ TABLE_VIEW=b.dataset.v; drawTable(); }; });
   }
   drawTable();
 
@@ -785,6 +954,7 @@ function render(DATA, keepScroll){
    Channel segregation — segmented control + breakdown table
    ============================================================ */
 var CHANNEL='all';
+var TABLE_VIEW='grouped', OPEN_GROUPS=new Set();
 function renderChanSeg(all, view){
   const bar=document.getElementById('chanBar'), seg=document.getElementById('chanSeg');
   const total=all.reduce((s,c)=>s+c.campaigns,0);
