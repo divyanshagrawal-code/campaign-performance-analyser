@@ -116,19 +116,25 @@
 
   /* ---- tables ---- */
   table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
-  th,td{padding:10px 12px;text-align:right;border-bottom:1px solid var(--line2);white-space:nowrap}
+  th,td{padding:10px 9px;text-align:right;border-bottom:1px solid var(--line2);white-space:nowrap}
+  th{white-space:normal;min-width:62px;max-width:104px;vertical-align:bottom;line-height:1.3}
+  th:first-child{min-width:180px;max-width:none}
+  /* campaign name stays visible while scrolling sideways on narrow screens */
+  #tbl th:first-child,#tbl td:first-child{position:sticky;left:0;z-index:1;box-shadow:1px 0 0 var(--line2)}
+  #tbl th:first-child{z-index:2}
+  #tbl td:first-child{background:#fff}
   th:first-child,td:first-child,th:nth-child(2),td:nth-child(2){text-align:left}
   #tbl th:nth-child(3),#tbl td:nth-child(3){text-align:left}
-  th{position:sticky;top:0;background:var(--soft);color:var(--mut);font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;cursor:pointer;user-select:none;border-bottom:1px solid var(--line)}
+  th{position:sticky;top:0;background:var(--soft);color:var(--mut);font-weight:600;font-size:12px;letter-spacing:0;cursor:pointer;user-select:none;border-bottom:1px solid var(--line)}
   th:first-child{border-top-left-radius:8px} th:last-child{border-top-right-radius:8px}
   th:hover{color:var(--ink)}
   th.sorted{color:var(--accent)}
   th.sorted::after{content:" ↓";font-size:10px} th.sorted.asc::after{content:" ↑"}
   tbody tr:hover td,#tbl tr:hover td{background:#fafbff}
-  td.nm{white-space:normal;min-width:190px;max-width:300px;font-weight:500;color:var(--ink)}
+  td.nm{white-space:normal;min-width:180px;max-width:300px;font-weight:500;color:var(--ink)}
   .tblwrap{overflow:auto;max-height:640px;border:1px solid var(--line);border-radius:10px}
   .tblwrap table th:first-child,.tblwrap table th:last-child{border-radius:0}
-  .verdict{font-size:12px;color:var(--mut);display:inline-block;text-align:left;white-space:nowrap;line-height:1.45}
+  .verdict{font-size:12px;color:var(--mut);display:inline-block;text-align:left;white-space:normal;max-width:150px;line-height:1.45}
   .vb{display:inline-block;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:2px 7px;border-radius:5px;margin-right:6px}
   .vb.win{background:var(--ok-soft);color:var(--ok)} .vb.under{background:var(--bad-soft);color:var(--bad)} .vb.ok{background:var(--line2);color:var(--ink2)}
   .pill{padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;display:inline-flex;align-items:center;gap:5px}
@@ -738,6 +744,10 @@ let CHARTS=[];
 function freshCanvas(hostId,px){ const h=document.getElementById(hostId);
   h.innerHTML=`<div style="position:relative;height:${px||280}px"><canvas></canvas></div>`; return h.querySelector('canvas'); }
 const trunc=(t,n)=>{ t=String(t||''); return t.length>n? t.slice(0,n-1)+'…' : t; };
+// Chart labels: break a long name into lines (Chart.js draws an array as stacked lines). Nothing is cut.
+const wrapLabel=(t,w)=>{ const words=String(t||'').split(/(\s+|_)/).filter(x=>x&&!/^\s+$/.test(x)); const out=[]; let cur='';
+  words.forEach(wd=>{ const sep=(cur&&wd!=='_'&&!cur.endsWith('_'))?' ':''; if((cur+sep+wd).length>w && cur){ out.push(cur); cur=wd==='_'?'':wd; } else cur+= sep+wd; });
+  if(cur) out.push(cur); return out.length? out : [''] };
 function chartTheme(){
   if(typeof Chart==='undefined') return;
   const d=Chart.defaults;
@@ -754,7 +764,7 @@ function fmtVerdict(t){
   // Compact form for the table; the full sentence is on hover.
   const med=t.match(/(\$\d[\d,]*(?:\.\d+)?|\d+(?:\.\d+)?%)\s+(?:[A-Za-z]+\s+)?median/);
   const label={Win:'Win',Underperform:'Below par',OK:'On par'}[m[1]];
-  const short=med? `vs ${med[1]}${/^\$/.test(med[1])?'/rcpt':''} median` : (m[1]==='OK'? 'near median' : t.slice(m[0].length));
+  const short=med? `vs ${med[1]} median` : (m[1]==='OK'? 'near median' : t.slice(m[0].length));
   return `<span class="verdict" title="${t}"><span class="vb ${cls}">${label}</span>${short}</span>`;
 }
 
@@ -858,8 +868,8 @@ function render(DATA, keepScroll){
     const ds=[];
     if(hasOpen) ds.push({label:'Open rate (email)',backgroundColor:'#c7d2fe',data:ec.map(c=>c.rates.open_rate!=null?+(c.rates.open_rate*100).toFixed(1):null)});
     ds.push({label:'Click rate',backgroundColor:ec.map(c=>chanColor(c.channel)+(hasOpen?'cc':'')),data:ec.map(c=>c.rates.click_rate!=null?+(c.rates.click_rate*100).toFixed(1):null)});
-    CHARTS.push(new Chart(freshCanvas('host_eng',Math.max(200,ec.length*(hasOpen?44:30)+60)),{type:'bar',
-      data:{labels:ec.map(c=>trunc(c.name,38)+' · '+chanLabel(c.channel)),datasets:ds},
+    CHARTS.push(new Chart(freshCanvas('host_eng',Math.max(220,ec.length*(hasOpen?52:40)+60)),{type:'bar',
+      data:{labels:ec.map(c=>wrapLabel(c.name+' · '+chanLabel(c.channel),34)),datasets:ds},
       options:{indexAxis:'y',scales:{x:{ticks:{callback:v=>v+'%'},grid:{color:css('--line2')}},y:{grid:{display:false},ticks:{color:css('--ink2')}}},
         plugins:{legend:{position:'top',align:'end'},tooltip:{callbacks:{title:it=>ec[it[0].dataIndex].name,label:ctx=>` ${ctx.dataset.label}: ${ctx.raw}%`}}}}}));
   }else{ document.getElementById('engCard').style.display='none'; }
@@ -869,7 +879,7 @@ function render(DATA, keepScroll){
   if(dd.length){
     document.getElementById('discCard').style.display='';
     CHARTS.push(new Chart(freshCanvas('host_disc',Math.max(180,dd.length*30+50)),{type:'bar',
-      data:{labels:dd.map(c=>trunc(c.name||c.utm.campaign,40)),datasets:[{label:'% of revenue on discount',backgroundColor:css('--warn'),data:dd.map(c=>+(c.discount_dependency*100).toFixed(1))}]},
+      data:{labels:dd.map(c=>wrapLabel(c.name||c.utm.campaign,34)),datasets:[{label:'% of revenue on discount',backgroundColor:css('--warn'),data:dd.map(c=>+(c.discount_dependency*100).toFixed(1))}]},
       options:{indexAxis:'y',scales:{x:{max:100,ticks:{callback:v=>v+'%'},grid:{color:css('--line2')}},y:{grid:{display:false},ticks:{color:css('--ink2')}}},
         plugins:{legend:{display:false},tooltip:{callbacks:{title:it=>dd[it[0].dataIndex].name,label:ctx=>` ${ctx.raw}% of revenue on discount`}}}}}));
   }else{ document.getElementById('discCard').style.display='none'; }
@@ -879,23 +889,23 @@ function render(DATA, keepScroll){
   const anyCol=k=>DATA.campaigns.some(c=>get(c,k)!=null);
   const cols=[
     ['name','Campaign', c=>escapeHtml(c.name||c.utm.campaign||'—')],
-    ['channel','Ch.', c=> c.isGroup? `<span class="pills">${c.channels.map(ch=>`<span class="pill ${ch}">${chanLabel(ch)}</span>`).join('')}</span>`
+    ['channel','Channel', c=> c.isGroup? `<span class="pills">${c.channels.map(ch=>`<span class="pill ${ch}">${chanLabel(ch)}</span>`).join('')}</span>`
        : `<span class="pill ${c.channel||'other'}"${c.inferred?' title="Inferred — no channel column"':''}>${chanLabel(c.channel||'other')}${c.inferred?'*':''}</span>`],
     ['revenue','Revenue', c=>fmtUSD(c.revenue)],
     ['funnel.orders','Orders', c=>fmtInt(c.funnel.orders)],
     ['aov','AOV', c=>fmtUSD(c.aov)],
   ];
-  if(anyCol('rates.open_rate'))  cols.push(['rates.open_rate','Open%', c=>fmtPct(c.rates.open_rate)]);
-  if(anyCol('rates.click_rate')) cols.push(['rates.click_rate','Click%', c=>fmtPct(c.rates.click_rate)]);
-  cols.push(['rates.click_to_order','Clk→Ord', c=>fmtPct(get(c,'rates.click_to_order'))]);
-  if(anyCol('funnel.sessions')){ cols.push(['funnel.sessions','Sessions', c=>fmtInt(c.funnel.sessions)]); cols.push(['rates.session_to_order','Sess→Ord', c=>fmtPct(get(c,'rates.session_to_order'))]); }
-  if(anyCol('rates.delivery_rate')) cols.push(['rates.delivery_rate','Deliv%', c=>fmtPct(c.rates.delivery_rate)]);
-  if(anyCol('rates.rev_per_recipient')) cols.push(['rates.rev_per_recipient','Rev/rcpt', c=>fmtUSD2(c.rates.rev_per_recipient)]);
+  if(anyCol('rates.open_rate'))  cols.push(['rates.open_rate','Open rate', c=>fmtPct(c.rates.open_rate)]);
+  if(anyCol('rates.click_rate')) cols.push(['rates.click_rate','Click rate', c=>fmtPct(c.rates.click_rate)]);
+  cols.push(['rates.click_to_order','Click → order', c=>fmtPct(get(c,'rates.click_to_order'))]);
+  if(anyCol('funnel.sessions')){ cols.push(['funnel.sessions','Sessions', c=>fmtInt(c.funnel.sessions)]); cols.push(['rates.session_to_order','Session → order', c=>fmtPct(get(c,'rates.session_to_order'))]); }
+  if(anyCol('rates.delivery_rate')) cols.push(['rates.delivery_rate','Delivery rate', c=>fmtPct(c.rates.delivery_rate)]);
+  if(anyCol('rates.rev_per_recipient')) cols.push(['rates.rev_per_recipient','Revenue / recipient', c=>fmtUSD2(c.rates.rev_per_recipient)]);
   if(anyCol('roas')) cols.push(['roas','ROAS', c=>c.roas==null?'—':c.roas.toFixed(1)+'×']);
-  if(anyCol('rates.unsub_rate'))  cols.push(['rates.unsub_rate','Unsub%', c=>fmtPct(c.rates.unsub_rate)]);
-  if(anyCol('rates.bounce_rate')) cols.push(['rates.bounce_rate','Bounce%', c=>fmtPct(c.rates.bounce_rate)]);
-  if(anyCol('discount_dependency')) cols.push(['discount_dependency','Disc%', c=>fmtPct(c.discount_dependency)]);
-  if(anyCol('new_customer_share'))  cols.push(['new_customer_share','New%', c=>fmtPct(c.new_customer_share)]);
+  if(anyCol('rates.unsub_rate'))  cols.push(['rates.unsub_rate','Unsubscribe rate', c=>fmtPct(c.rates.unsub_rate)]);
+  if(anyCol('rates.bounce_rate')) cols.push(['rates.bounce_rate','Bounce rate', c=>fmtPct(c.rates.bounce_rate)]);
+  if(anyCol('discount_dependency')) cols.push(['discount_dependency','Revenue on discount', c=>fmtPct(c.discount_dependency)]);
+  if(anyCol('new_customer_share'))  cols.push(['new_customer_share','New customer share', c=>fmtPct(c.new_customer_share)]);
   cols.splice(2,0,['narrative','Verdict', c=>fmtVerdict(c.narrative)]);
 
   let sortKey='revenue',sortDir=-1;
@@ -974,19 +984,19 @@ function renderChanTable(all, view){
   const any=k=>all.some(c=>c[k]!=null);
   const cols=[['Channel',c=>`<span class="pill ${c.channel}">${chanLabel(c.channel)}</span>`],
     ['Campaigns',c=>fmtInt(c.campaigns)],['Recipients',c=>fmtInt(c.sends)]];
-  if(any('delivery_rate')) cols.push(['Deliv%',c=>fmtPct(c.delivery_rate)]);
-  if(any('open_rate')) cols.push(['Open%',c=>fmtPct(c.open_rate)]);
-  cols.push(['Click%',c=>fmtPct(c.click_rate)],['Clk→Ord',c=>fmtPct(c.click_to_order)],['Orders',c=>fmtInt(c.orders)],
-    ['Revenue',c=>fmtUSD(c.revenue)],['Rev share',c=>fmtPct(c.rev_share)],['Rev/rcpt',c=>fmtUSD2(c.rev_per_recipient)],['AOV',c=>fmtUSD(c.aov)]);
-  if(any('unsub_rate')) cols.push(['Unsub%',c=>fmtPct(c.unsub_rate)]);
+  if(any('delivery_rate')) cols.push(['Delivery rate',c=>fmtPct(c.delivery_rate)]);
+  if(any('open_rate')) cols.push(['Open rate',c=>fmtPct(c.open_rate)]);
+  cols.push(['Click rate',c=>fmtPct(c.click_rate)],['Click → order',c=>fmtPct(c.click_to_order)],['Orders',c=>fmtInt(c.orders)],
+    ['Revenue',c=>fmtUSD(c.revenue)],['Revenue share',c=>fmtPct(c.rev_share)],['Revenue / recipient',c=>fmtUSD2(c.rev_per_recipient)],['AOV',c=>fmtUSD(c.aov)]);
+  if(any('unsub_rate')) cols.push(['Unsubscribe rate',c=>fmtPct(c.unsub_rate)]);
   if(any('roas')) cols.push(['ROAS',c=>c.roas==null?'—':c.roas.toFixed(1)+'×']);
   const t=document.getElementById('chanTbl');
   t.innerHTML='<tr>'+cols.map(c=>`<th style="cursor:default">${c[0]}</th>`).join('')+'</tr>'+
     all.map(c=>`<tr data-ch="${c.channel}" class="${c.channel===view?'sel':''}">`+cols.map(col=>`<td>${col[1](c)}</td>`).join('')+'</tr>').join('');
   t.querySelectorAll('tr[data-ch]').forEach(tr=>tr.onclick=()=>setChannel(tr.dataset.ch===view?'all':tr.dataset.ch));
   document.getElementById('chanNote').textContent =
-    'Rev/rcpt = revenue per delivered message (or per recipient when deliveries are missing) — the fairest like-for-like comparison between email and SMS. '
-    + (any('open_rate')? 'Open% is email only. ' : '') + 'Figures follow the selected period.';
+    'Revenue / recipient = revenue per delivered message (or per recipient when deliveries are missing) — the fairest like-for-like comparison between email and SMS. '
+    + (any('open_rate')? 'Open rate is email only. ' : '') + 'Figures follow the selected period.';
 }
 function renderView(rows, keepScroll){
   const full=analyze(rows,{channel:'all'});
