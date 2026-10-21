@@ -1,0 +1,1083 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Campaign Performance Analyser</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<style>
+  :root{--bg:#0f1419;--card:#1a2129;--ink:#e6edf3;--mut:#8b98a5;--ok:#2ea043;--bad:#f85149;--accent:#4493f8;--line:#283039;--warn:#d29922}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif}
+  .wrap{max-width:1180px;margin:0 auto;padding:24px}
+  h1{font-size:22px;margin:0 0 2px} .sub{color:var(--mut);margin-bottom:20px}
+  .banner{padding:12px 16px;border-radius:8px;margin-bottom:20px;font-weight:600}
+  .banner.good{background:rgba(46,160,67,.15);border:1px solid var(--ok)}
+  .banner.warn{background:rgba(248,81,73,.12);border:1px solid var(--bad)}
+  .banner.info{background:rgba(68,147,248,.12);border:1px solid var(--accent)}
+
+  /* ---- upload panel ---- */
+  .uploader{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px;margin-bottom:24px}
+  .uploader h2{font-size:16px;margin:0 0 4px}
+  .uploader p.hint{color:var(--mut);margin:0 0 16px;font-size:13px}
+  .drop{border:2px dashed var(--line);border-radius:10px;padding:26px;text-align:center;color:var(--mut);transition:.15s;cursor:pointer}
+  .drop.drag{border-color:var(--accent);color:var(--ink);background:rgba(68,147,248,.06)}
+  .drop strong{color:var(--ink)}
+  .or{display:flex;align-items:center;gap:12px;color:var(--mut);margin:16px 0;font-size:12px}
+  .or::before,.or::after{content:"";flex:1;height:1px;background:var(--line)}
+  .gs{display:flex;gap:10px;flex-wrap:wrap}
+  .gs input{flex:1;min-width:240px;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:10px 12px;font-size:13px}
+  .btn{background:var(--accent);color:#fff;border:none;border-radius:8px;padding:10px 16px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap}
+  .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--ink)}
+  .btn.danger{background:transparent;border:1px solid var(--bad);color:var(--bad)}
+  .btn.sm{padding:6px 12px;font-size:12px}
+  .btn:hover{filter:brightness(1.08)}
+  .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;align-items:center}
+  .status{margin-top:12px;font-size:13px}
+  .status.err{color:var(--bad)} .status.ok{color:var(--ok)}
+  details.fmt{margin-top:14px;color:var(--mut);font-size:12px}
+  details.fmt summary{cursor:pointer;color:var(--accent)}
+  details.fmt code{background:var(--bg);padding:1px 5px;border-radius:4px;color:var(--ink)}
+
+  /* ---- saved datasets index ---- */
+  .saved{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px;margin-bottom:24px}
+  .saved h2{font-size:16px;margin:0 0 12px}
+  .dsrow{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+  .dsrow:last-child{border-bottom:none}
+  .dsrow .meta{flex:1;min-width:0}
+  .dsrow .nm{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .dsrow .dt{color:var(--mut);font-size:12px}
+  .empty{color:var(--mut);font-size:13px}
+
+  /* ---- dashboard ---- */
+  #dash{display:none}
+  .dsbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--card);border:1px solid var(--line);
+         border-radius:10px;padding:10px 14px;margin-bottom:18px}
+  .dsbar label{color:var(--mut);font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+  .dsbar select{background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 10px;font-size:13px;max-width:340px}
+  .dsbar .spacer{flex:1}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-bottom:26px}
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px}
+  .kpi .lab{color:var(--mut);font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+  .kpi .val{font-size:26px;font-weight:700;margin-top:6px}
+  .kpi .dlt{font-size:12px;margin-top:4px} .up{color:var(--ok)} .down{color:var(--bad)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:26px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px}
+  .card h3{margin:0 0 14px;font-size:15px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{padding:9px 10px;text-align:right;border-bottom:1px solid var(--line)}
+  th:first-child,td:first-child{text-align:left}
+  th{color:var(--mut);font-weight:600;cursor:pointer;user-select:none}
+  th:hover{color:var(--ink)}
+  .verdict{font-size:12px;color:var(--mut);max-width:280px;text-align:left;white-space:normal}
+  .pill{padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700}
+  .pill.email{background:rgba(68,147,248,.18);color:var(--accent)}
+  .pill.sms{background:rgba(46,160,67,.18);color:var(--ok)}
+  .pill.other{background:rgba(139,152,165,.18);color:var(--mut)}
+  .pill.push{background:rgba(163,113,247,.18);color:#a371f7}
+  .pill.whatsapp{background:rgba(210,153,34,.18);color:var(--warn)}
+  /* ---- channel segregation ---- */
+  #chanBar{margin-top:-10px;margin-bottom:16px}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .seg button{background:transparent;border:none;border-right:1px solid var(--line);color:var(--mut);padding:7px 14px;font:600 12px/1 inherit;cursor:pointer}
+  .seg button:last-child{border-right:none}
+  .seg button .n{opacity:.7;font-weight:400;margin-left:5px}
+  .seg button.on{background:var(--accent);color:#fff}
+  .seg button:hover:not(.on){color:var(--ink)}
+  #chanTbl tr.sel td{background:rgba(68,147,248,.08)}
+  #chanTbl tr[data-ch]{cursor:pointer}
+  #chanTbl tr[data-ch]:hover td{background:rgba(255,255,255,.03)}
+  .note{color:var(--mut);font-size:12px;margin-top:10px}
+  @media(max-width:780px){.grid2{grid-template-columns:1fr}}
+  .inp{background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font:inherit}
+  .inp.sm{padding:5px 7px;font-size:12px}
+  .inp::-webkit-calendar-picker-indicator{filter:invert(.7)}
+  #periodBar{margin-top:-10px;margin-bottom:16px}
+  .foot{color:var(--mut);font-size:12px;margin-top:20px;border-top:1px solid var(--line);padding-top:14px}
+</style>
+</head>
+<body><div class="wrap">
+  <h1>Campaign Performance Analyser</h1>
+  <div class="sub">Upload campaign data to generate the analysis. Datasets are saved in this browser and stay until you delete them.</div>
+
+  <!-- ============ SAVED DATASETS INDEX ============ -->
+  <div class="saved" id="savedPanel">
+    <h2>Saved datasets</h2>
+    <div id="savedList"></div>
+  </div>
+
+  <!-- ============ UPLOAD PANEL ============ -->
+  <div class="uploader" id="uploader">
+    <h2>Load new data</h2>
+    <p class="hint">Drop one or more CSVs, or paste a public Google Sheets link. Email and SMS can be in one file or separate files (e.g. Klaviyo's email and SMS exports dropped together) — they're merged into one dataset and split by channel. Each row = one campaign (A/B variant rows are rolled up automatically).</p>
+
+    <div class="drop" id="drop">
+      <strong>Drag &amp; drop CSVs here</strong> (one or several), or <span style="color:var(--accent)">browse</span>
+      <input type="file" id="file" accept=".csv,text/csv" multiple style="display:none"/>
+    </div>
+
+    <div class="or">or</div>
+
+    <div class="gs">
+      <input type="text" id="gsurl" placeholder="https://docs.google.com/spreadsheets/d/.../edit#gid=0"/>
+      <button class="btn" id="gsload">Load Sheet</button>
+    </div>
+
+    <div class="actions">
+      <button class="btn ghost" id="sample">Load sample data</button>
+      <button class="btn ghost" id="template">Download CSV template</button>
+      <button class="btn ghost" id="exportAll">⬇ Export saved datasets</button>
+      <button class="btn ghost" id="importBtn">⬆ Import datasets</button>
+      <input type="file" id="importFile" accept=".json,application/json" style="display:none"/>
+    </div>
+    <p class="hint" style="margin-top:8px">Saved datasets live in this browser only.
+      Export them to move to another browser, another machine, or a new address for this tool.</p>
+
+    <div class="status" id="status"></div>
+
+    <details class="fmt">
+      <summary>Recognised columns</summary>
+      <p style="margin:8px 0 0"><strong>Klaviyo campaign exports work as-is</strong> — Campaign Name, Campaign Channel,
+      Total Recipients, Successful Deliveries, Unique Opens, Unique Clicks, Unique Placed Order, Revenue,
+      Unsubscribes, Spam Complaints and Bounces are all recognised, and A/B variant rows are rolled up per campaign.<br/><br/>
+      <strong>SMS campaigns:</strong> Klaviyo SMS exports work the same way (Total Recipients, Successful / Failed Deliveries, Unique Clicks,
+      Unsubscribes, Revenue, Unique Placed Order). SMS has no opens, so open rate is shown for email only; delivery rate and click rate are the
+      SMS engagement measures. An optional <code>spend</code>/<code>cost</code> column (e.g. SMS credit cost) adds ROAS and cost per order.<br/>
+      <strong>Channel:</strong> read from <code>channel</code> / Campaign Channel (Email, SMS, MMS, Text, Push…). If a file has no channel column,
+      it is taken from the file name (e.g. <em>klaviyo_sms_export.csv</em>), then the campaign name, then from whether the row has opens (email) — inferred
+      channels are flagged in the banner.<br/><br/>
+      Recognised inputs (any subset): <code>campaign</code>, <code>channel</code>, <code>sends</code>/recipients,
+      <code>deliveries</code>, <code>failed</code> deliveries, <code>spend</code>/cost, <code>send_time</code>, <code>opens</code>, <code>clicks</code>, <code>orders</code>/placed orders,
+      <code>revenue</code>, <code>unsubscribes</code>, <code>spam</code>, <code>bounces</code>,
+      <code>sessions</code>, <code>add_to_cart</code>, <code>checkout</code> (web funnel, if you have GA4/Shopify),
+      <code>discount_revenue</code>, <code>new_customers</code>,
+      <code>period</code> (<code>current</code>/<code>baseline</code> for vs-baseline deltas), <code>verdict</code>.<br/>
+      Headers are matched loosely (case / spaces / synonyms). Missing columns are skipped.</p>
+    </details>
+
+    <p class="hint" style="margin-top:14px">Google Sheets must be shared as <strong>Anyone with the link</strong> or Published to the web.</p>
+  </div>
+
+  <!-- ============ DASHBOARD ============ -->
+  <div id="dash">
+    <div class="dsbar">
+      <label>Dataset</label>
+      <select id="dsSelect"></select>
+      <span class="dt" id="dsMeta" style="color:var(--mut);font-size:12px"></span>
+      <span class="spacer"></span>
+      <button class="btn ghost sm" id="dsNew">＋ Load new</button>
+      <button class="btn ghost sm" id="dsAdd" title="Append another export (e.g. the SMS file) to this dataset">＋ Add file to dataset</button>
+      <input type="file" id="addFile" accept=".csv,text/csv" multiple style="display:none"/>
+      <button class="btn ghost sm" id="dsRename">✎ Rename</button>
+      <button class="btn danger sm" id="dsDelete">🗑 Delete</button>
+    </div>
+
+    <div class="dsbar" id="periodBar">
+      <label>Period</label>
+      <select id="grainSel">
+        <option value="all">All time</option>
+        <option value="week">Weekly</option>
+        <option value="month">Monthly</option>
+        <option value="year">Yearly</option>
+        <option value="custom">Custom range</option>
+      </select>
+      <select id="bucketSel" style="display:none"></select>
+      <span id="customWrap" style="display:none">
+        <input type="date" id="dFrom" class="inp sm"/>
+        <span style="color:var(--mut)">to</span>
+        <input type="date" id="dTo" class="inp sm"/>
+      </span>
+      <span class="spacer"></span>
+      <span class="dt" id="periodMeta" style="color:var(--mut);font-size:12px"></span>
+    </div>
+
+    <div class="dsbar" id="chanBar">
+      <label>Channel</label>
+      <div class="seg" id="chanSeg"></div>
+      <span class="spacer"></span>
+      <span class="dt" id="chanMeta" style="color:var(--mut);font-size:12px"></span>
+    </div>
+
+    <div id="banner"></div>
+    <div class="kpis" id="kpis"></div>
+
+    <div class="card" style="margin-bottom:26px"><h3>Portfolio summary</h3>
+      <div id="summary" style="color:var(--mut);white-space:pre-wrap"></div></div>
+
+    <div class="card" id="chanCard" style="margin-bottom:26px"><h3>Channel breakdown <span style="color:var(--mut);font-weight:400">(click a row to view that channel only)</span></h3>
+      <div style="overflow-x:auto"><table id="chanTbl"></table></div>
+      <div class="note" id="chanNote"></div></div>
+
+    <div class="grid2">
+      <div class="card"><h3>Revenue share by channel</h3><div id="host_chanRev"></div></div>
+      <div class="card"><h3>Current vs baseline</h3><div id="host_baseChart"></div></div>
+    </div>
+
+    <div class="card" style="margin-bottom:26px"><h3 id="funnelTitle">Top-campaign funnel (send &rarr; order)</h3>
+      <div id="host_funnel"></div></div>
+
+    <div class="card" id="engCard" style="margin-bottom:26px"><h3 id="engTitle">Engagement (top campaigns)</h3>
+      <div id="host_eng"></div></div>
+
+    <div class="card" id="discCard" style="margin-bottom:26px"><h3>Discount dependency by campaign</h3>
+      <div id="host_disc"></div></div>
+
+    <div class="card"><h3>Campaigns <span style="color:var(--mut);font-weight:400">(click a header to sort)</span></h3>
+      <div style="overflow-x:auto"><table id="tbl"></table></div></div>
+
+    <div class="foot" id="foot"></div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   Persistence — saved-dataset index in localStorage
+   (per browser/device; survives refresh; kept until deleted)
+   ============================================================ */
+const LS_KEY='cpa_datasets_v1', LS_CUR='cpa_current_v1';
+function loadIndex(){ try{return JSON.parse(localStorage.getItem(LS_KEY))||[];}catch(e){return[];} }
+function saveIndex(a){ try{localStorage.setItem(LS_KEY,JSON.stringify(a));return true;}catch(e){return false;} }
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+function getDataset(id){ return loadIndex().find(d=>d.id===id); }
+function setCurrent(id){ localStorage.setItem(LS_CUR,id||''); }
+function getCurrent(){ return localStorage.getItem(LS_CUR)||''; }
+function addDataset(name,rows,summary){
+  const idx=loadIndex();
+  const ds={id:uid(),name,savedAt:new Date().toISOString(),rows,summary};
+  idx.unshift(ds);
+  if(!saveIndex(idx)){ alert('Could not save: browser storage is full. Delete an old dataset and try again.'); return null; }
+  return ds.id;
+}
+function deleteDataset(id){ saveIndex(loadIndex().filter(d=>d.id!==id)); if(getCurrent()===id) setCurrent(''); }
+function renameDataset(id,name){ const idx=loadIndex(); const d=idx.find(x=>x.id===id); if(d){d.name=name; saveIndex(idx);} }
+
+/* ============================================================
+   Sample data + template
+   ============================================================ */
+const SAMPLE_ROWS = [
+  {campaign:"Summer Sale — Launch (Email)",channel:"email",sends:48000,deliveries:47300,opens:18920,clicks:5760,sessions:5200,add_to_cart:1820,checkout:690,orders:358,revenue:92400,discount_revenue:38808,new_customers:111,period:"current"},
+  {campaign:"Summer Sale — Reminder (Email)",channel:"email",sends:46500,deliveries:45800,opens:16030,clicks:4185,sessions:3900,add_to_cart:1210,checkout:470,orders:263,revenue:61300,discount_revenue:38619,new_customers:58,period:"current"},
+  {campaign:"Flash Drop (SMS)",channel:"sms",sends:22000,deliveries:21450,failed:550,spend:330,clicks:3080,sessions:2850,add_to_cart:980,checkout:420,orders:200,revenue:38200,discount_revenue:10696,new_customers:88,period:"current"},
+  {campaign:"VIP Early Access (Email)",channel:"email",sends:9800,deliveries:9720,opens:5150,clicks:1470,sessions:1350,add_to_cart:560,checkout:230,orders:100,revenue:31800,discount_revenue:3816,new_customers:8,period:"current"},
+  {campaign:"Back-in-Stock Blast (Email)",channel:"email",sends:18500,deliveries:18130,opens:6170,clicks:1295,sessions:1180,add_to_cart:360,checkout:140,orders:80,revenue:16400,discount_revenue:5740,new_customers:22,period:"current"},
+  {campaign:"Last Chance (SMS)",channel:"sms",sends:21000,deliveries:20540,failed:460,spend:315,clicks:1680,sessions:1550,add_to_cart:420,checkout:130,orders:54,revenue:8800,discount_revenue:6248,new_customers:10,period:"current"},
+  {campaign:"__baseline_email__",channel:"email",sends:0,clicks:0,sessions:24100,add_to_cart:0,checkout:0,orders:560,revenue:128300,period:"baseline"},
+  {campaign:"__baseline_sms__",channel:"sms",sends:0,clicks:0,sessions:12450,add_to_cart:0,checkout:0,orders:285,revenue:61400,period:"baseline"}
+];
+const TEMPLATE_CSV =
+`campaign,channel,send_time,sends,deliveries,failed,opens,clicks,unsubscribes,spend,sessions,add_to_cart,checkout,orders,revenue,discount_revenue,new_customers,period
+Summer Sale Launch,email,2026-06-02 10:00,48000,47300,,18920,5760,95,,5200,1820,690,358,92400,38808,111,current
+Flash Drop,sms,2026-06-04 18:00,22000,21450,550,,3080,140,330,2850,980,420,200,38200,10696,88,current
+Prior period - email,email,,0,0,,,0,,,24100,0,0,560,128300,,,baseline
+Prior period - sms,sms,,0,0,,,0,,,12450,0,0,285,61400,,,baseline`;
+
+/* ============================================================
+   Column mapping — loose header matching
+   ============================================================ */
+const SYN = {
+  campaign:["campaign","campaign_name","name","campaignname"],
+  channel:["channel","medium","type","campaign_channel","campaign_type","message_type","channel_type","message_channel"],
+  sends:["sends","sent","send","sends_count","recipients","total_recipients","audience"],
+  deliveries:["deliveries","delivered","successful_deliveries","delivery"],
+  failed:["failed","failed_deliveries","undelivered","failed_sends","failed_delivery"],
+  spend:["spend","cost","sms_spend","sms_cost","credit_cost","credits_cost","total_cost"],
+  opens:["opens","unique_opens","open"],
+  total_opens:["total_opens","all_opens"],
+  clicks:["clicks","click","unique_clicks"],
+  total_clicks:["total_clicks","all_clicks"],
+  sessions:["sessions","session","visits","ga_sessions"],
+  add_to_cart:["add_to_cart","addtocart","atc","adds_to_cart","cart"],
+  checkout:["checkout","checkouts","reached_checkout","begin_checkout"],
+  orders:["orders","order","purchases","conversions","transactions","unique_placed_order","placed_order","unique_placed_orders"],
+  revenue:["revenue","sales","total_revenue","order_value","gmv"],
+  unsubscribes:["unsubscribes","unsubscribe","unsubs","unsub"],
+  spam:["spam","spam_complaints","complaints"],
+  bounces:["bounces","bounce","bounced"],
+  discount_revenue:["discount_revenue","discounted_revenue","discount_sales","revenue_on_discount"],
+  new_customers:["new_customers","new_customer_orders","first_time_orders","new_buyers"],
+  period:["period","window","segment"],
+  subject:["subject","subject_line"],
+  list:["list","segment_list","audience_list"],
+  send_time:["send_time","sendtime","sent_at","send_date","send_datetime"],
+  variant:["variant","variant_name"],
+  verdict:["verdict","note","notes","comment"]
+};
+const norm = s => String(s||"").toLowerCase().replace(/[^a-z0-9]/g,"");
+function buildHeaderMap(headers){
+  const map={};
+  headers.forEach(h=>{ const n=norm(h);
+    for(const [canon,syns] of Object.entries(SYN)){ if(!map[canon] && syns.map(norm).includes(n)){ map[canon]=h; break; } }});
+  return map;
+}
+const numFields=["sends","deliveries","failed","spend","opens","total_opens","clicks","total_clicks","sessions","add_to_cart","checkout","orders","revenue","unsubscribes","spam","bounces","discount_revenue","new_customers"];
+const metaFields=["subject","list","send_time","variant"];
+/* ---- channel canonicalisation ---- */
+const CHAN_LABEL={email:'Email',sms:'SMS',push:'Push',whatsapp:'WhatsApp',other:'Other'};
+const CHAN_ORDER=['email','sms','push','whatsapp','other'];
+const chanLabel=c=>CHAN_LABEL[c]||c;
+function canonChannel(v){
+  const s=String(v||'').toLowerCase().trim();
+  if(!s) return null;
+  if(/\b(sms|mms|text|txt)\b|text message/.test(s)) return 'sms';
+  if(/e-?mail|newsletter/.test(s)) return 'email';
+  if(/push/.test(s)) return 'push';
+  if(/whats\s?app/.test(s)) return 'whatsapp';
+  return 'other';
+}
+// Used when a row has no channel value. Order: file-name hint (set at ingest),
+// campaign name, then "has opens" (only email reports opens).
+function inferChannel(name, opens){
+  const n=String(name||'').toLowerCase();
+  if(/\b(sms|mms|text)\b/.test(n)) return 'sms';
+  if(/\be-?mail\b|newsletter/.test(n)) return 'email';
+  if(opens!=null) return 'email';
+  return 'other';
+}
+function channelHintFromFile(fname){
+  const f=String(fname||'').toLowerCase();
+  if(/(^|[^a-z])(sms|mms|text)([^a-z]|$)/.test(f)) return 'sms';
+  if(/e-?mail/.test(f)) return 'email';
+  return '';
+}
+// Rewrites one file's rows to canonical column names, so files with different
+// headers (Klaviyo email vs SMS exports) can live in one dataset.
+function canonicalizeRows(rows, fname){
+  if(!rows.length) return rows;
+  const keys=new Set(); rows.forEach(r=>Object.keys(r).forEach(k=>keys.add(k)));
+  const hmap=buildHeaderMap([...keys]);
+  const hint=channelHintFromFile(fname);
+  return rows.map(r=>{
+    const o={};
+    Object.keys(SYN).forEach(k=>{ o[k]= hmap[k]? (r[hmap[k]]==null?'':r[hmap[k]]) : ''; });
+    if(!String(o.channel).trim() && hint){ o.channel=hint; }
+    return o;
+  });
+}
+function toNum(v){ if(v==null||v==="")return null; const n=Number(String(v).replace(/[$,\s%]/g,"")); return isNaN(n)?null:n; }
+
+/* ============================================================
+   Analysis — raw rows -> DATA object the charts consume
+   ============================================================ */
+function analyze(rawRows, opts){
+  opts=opts||{}; const VIEW=opts.channel||'all';
+  if(!rawRows.length) throw new Error("No rows found in the data.");
+  const hmap=buildHeaderMap(Object.keys(rawRows[0]));
+  if(!hmap.campaign && !hmap.revenue) throw new Error("Could not find a 'campaign' or 'revenue' column. Check the template.");
+
+  const rows=rawRows.map(r=>{
+    const o={};
+    o.campaign = hmap.campaign ? String(r[hmap.campaign]||"").trim() : null;
+    numFields.forEach(f=>{ o[f]= hmap[f]? toNum(r[hmap[f]]) : null; });
+    const rawCh = hmap.channel ? r[hmap.channel] : '';
+    o.channel = canonChannel(rawCh);
+    o.channel_inferred = !o.channel;
+    if(!o.channel) o.channel = inferChannel(o.campaign, o.opens);
+    metaFields.forEach(f=>{ o[f]= hmap[f]? r[hmap[f]] : null; });
+    o.period = (hmap.period ? String(r[hmap.period]||"").toLowerCase().trim() : "current") || "current";
+    o.verdict = hmap.verdict ? r[hmap.verdict] : null;
+    return o;
+  }).filter(o=> (o.campaign||"").trim()!=="" || o.revenue!=null);
+
+  // Roll up A/B variant rows sharing campaign name + channel + period.
+  const groups=new Map();
+  rows.forEach(r=>{
+    const key=norm(r.campaign)+"|"+r.channel+"|"+r.period;
+    if(!groups.has(key)){
+      const g={campaign:r.campaign,channel:r.channel,period:r.period,verdict:r.verdict,variants:0,channel_inferred:r.channel_inferred};
+      numFields.forEach(f=>g[f]=null); metaFields.forEach(f=>g[f]=r[f]); groups.set(key,g);
+    }
+    const g=groups.get(key); g.variants++;
+    numFields.forEach(f=>{ if(r[f]!=null) g[f]=(g[f]||0)+r[f]; });
+    if(!g.verdict && r.verdict) g.verdict=r.verdict;
+  });
+  const merged=[...groups.values()];
+  const allCurrent = merged.filter(r=>r.period!=="baseline");
+  const allBase = merged.filter(r=>r.period==="baseline");
+  const current = VIEW==='all'? allCurrent : allCurrent.filter(r=>r.channel===VIEW);
+  // Under a channel view, only a baseline tagged with that channel is comparable.
+  // A whole-store baseline vs one channel's revenue would overstate the decline.
+  const baseRows = VIEW==='all'? allBase : allBase.filter(r=>r.channel===VIEW);
+  const baselineDropped = VIEW!=='all' && allBase.length && !baseRows.length;
+
+  const rate=(num,den)=> (num!=null && den)? num/den : null;
+  const campaigns = current.map(r=>{
+    const orders=r.orders||0, revenue=r.revenue||0, sessions=r.sessions||0, clicks=r.clicks||0;
+    const reach = r.deliveries!=null ? r.deliveries : r.sends;
+    return {
+      name:r.campaign, channel:r.channel, variants:r.variants,
+      subject:r.subject, list:r.list, send_time:r.send_time,
+      revenue, aov: orders? revenue/orders : null,
+      spend:r.spend, roas:(r.spend? revenue/r.spend : null), cpo:(r.spend&&orders? r.spend/orders : null),
+      inferred:r.channel_inferred,
+      funnel:{sends:r.sends,deliveries:r.deliveries,opens:r.opens,clicks:r.clicks,
+              sessions:r.sessions,add_to_cart:r.add_to_cart,checkout:r.checkout,orders:r.orders},
+      rates:{ session_to_order: sessions? orders/sessions:null, click_to_order: clicks? orders/clicks:null,
+              open_rate: rate(r.opens,reach), click_rate: rate(r.clicks,reach),
+              unsub_rate: rate(r.unsubscribes,reach), bounce_rate: rate(r.bounces,r.sends),
+              delivery_rate: rate(r.deliveries,r.sends), rev_per_recipient: rate(revenue,reach) },
+      counts:{unsubscribes:r.unsubscribes,spam:r.spam,bounces:r.bounces,opens:r.opens,deliveries:r.deliveries},
+      discount_dependency: (r.discount_revenue!=null && revenue)? r.discount_revenue/revenue : null,
+      new_customer_share: (r.new_customers!=null && orders)? r.new_customers/orders : null,
+      narrative: r.verdict || autoVerdict(r, current), utm:{campaign:r.campaign}
+    };
+  }).sort((a,b)=> (b.revenue||0)-(a.revenue||0));
+
+  const sum=(arr,f)=>arr.reduce((s,c)=>s+(f(c)||0),0);
+  const pRev=sum(campaigns,c=>c.revenue), pOrd=sum(campaigns,c=>c.funnel.orders), pSess=sum(campaigns,c=>c.funnel.sessions);
+  const pDeliv=sum(campaigns,c=>c.funnel.deliveries), pSends=sum(campaigns,c=>c.funnel.sends);
+  const pOpens=sum(campaigns,c=>c.funnel.opens), pClicks=sum(campaigns,c=>c.funnel.clicks);
+  const pReach = pDeliv || pSends;
+  // Open rate only over campaigns that report opens (email) — SMS reach would dilute it.
+  const reachOf=c=> c.funnel.deliveries!=null? c.funnel.deliveries : (c.funnel.sends||0);
+  const pOpenReach = sum(campaigns.filter(c=>c.funnel.opens!=null), reachOf);
+  const pSpend = sum(campaigns,c=>c.spend);
+  const pDelivRate = (pDeliv && pSends)? sum(campaigns.filter(c=>c.funnel.deliveries!=null&&c.funnel.sends),c=>c.funnel.deliveries)/sum(campaigns.filter(c=>c.funnel.deliveries!=null&&c.funnel.sends),c=>c.funnel.sends) : null;
+  const channels = channelBreakdown(null, allCurrent);
+
+  let vs_baseline=null;
+  if(baseRows.length){
+    const bRev=sum(baseRows,r=>r.revenue), bOrd=sum(baseRows,r=>r.orders), bSess=sum(baseRows,r=>r.sessions);
+    const d=(cur,base)=> base? (cur-base)/base : null;
+    vs_baseline={ revenue_delta:d(pRev,bRev), orders_delta:d(pOrd,bOrd), sessions_delta:d(pSess,bSess),
+      aov_delta:d(pOrd?pRev/pOrd:0, bOrd?bRev/bOrd:0), baseline:{revenue:bRev,orders:bOrd,sessions:bSess},
+      note: VIEW==='all'? "Baseline = rows tagged period=baseline in your data."
+                        : `Baseline = rows tagged period=baseline with channel=${chanLabel(VIEW)}.` };
+  }
+
+  return {
+    meta:{currency:"USD", view:VIEW, baselineDropped:!!baselineDropped,
+          inferred:campaigns.filter(c=>c.inferred).length},
+    channels,
+    portfolio:{ campaign_count:campaigns.length, revenue:pRev, orders:pOrd, sessions:pSess,
+      aov: pOrd? pRev/pOrd:null, blended_session_to_order: pSess? pOrd/pSess:null,
+      open_rate: pOpenReach? pOpens/pOpenReach:null, click_rate: pReach? pClicks/pReach:null,
+      delivery_rate: pDelivRate, spend: pSpend||null, roas: pSpend? pRev/pSpend:null,
+      mixed: new Set(campaigns.map(c=>c.channel)).size>1,
+      has_engagement:(pOpens>0||pClicks>0), has_web_funnel:(pSess>0), vs_baseline },
+    portfolio_narrative: autoPortfolio(campaigns,pRev,vs_baseline,channels,VIEW),
+    campaigns
+  };
+}
+function autoVerdict(r, all){
+  const ctr = r.clicks? r.orders/r.clicks : null;
+  // Benchmark against the same channel: SMS and email convert differently,
+  // so a cross-channel median would mark one of them as always "underperforming".
+  const peers = all.filter(x=>x.channel===r.channel);
+  const med = median(peers.map(x=>x.clicks? x.orders/x.clicks:null).filter(v=>v!=null));
+  const ch = chanLabel(r.channel);
+  if(ctr==null) return "";
+  if(peers.length<2) return `${(ctr*100).toFixed(1)}% click-to-order (only ${ch} campaign — no peer benchmark).`;
+  if(med && ctr>=med*1.15) return `Win — ${(ctr*100).toFixed(1)}% click-to-order vs ${(med*100).toFixed(1)}% ${ch} median.`;
+  if(med && ctr<med*0.7)  return `Underperform — ${(ctr*100).toFixed(1)}% click-to-order, well below the ${(med*100).toFixed(1)}% ${ch} median.`;
+  return `OK — ${(ctr*100).toFixed(1)}% click-to-order, near the ${ch} median.`;
+}
+function autoPortfolio(camps,rev,vb,channels,view){
+  if(!camps.length) return "";
+  const top=camps[0];
+  const lift = vb&&vb.revenue_delta!=null? ` (${vb.revenue_delta>=0?"+":""}${(vb.revenue_delta*100).toFixed(0)}% vs baseline)` : "";
+  const scope = view==='all'? '' : chanLabel(view)+' ';
+  let txt = `${camps.length} ${scope}campaigns drove ${fmtUSD(rev)} in attributed revenue${lift}. Top campaign: ${top.name} at ${fmtUSD(top.revenue)}.`;
+  if(view==='all' && channels && channels.length>1){
+    txt += '\nBy channel: ' + channels.map(c=>`${chanLabel(c.channel)} ${fmtUSD(c.revenue)} (${fmtPct(c.rev_share)}, ${c.campaigns} campaign${c.campaigns>1?'s':''}`
+      + (c.rev_per_recipient!=null? `, ${fmtUSD2(c.rev_per_recipient)}/recipient` : '') + ')').join(' · ') + '.';
+  }
+  return txt + ' Per-campaign verdicts are in the table below.';
+}
+// Per-channel rollup of the *current* (non-baseline) merged rows.
+function channelBreakdown(_unused, rows){
+  const by={};
+  rows.forEach(r=>{
+    const k=r.channel||'other';
+    const b=by[k]||(by[k]={channel:k,campaigns:0,sends:0,deliveries:0,failed:0,opens:0,clicks:0,orders:0,revenue:0,
+      unsubscribes:0,spend:0,_hasDeliv:false,_hasOpens:false,_hasSpend:false,_hasUnsub:false,_hasFailed:false,_sendsWithDeliv:0,_openReach:0});
+    b.campaigns++;
+    const reach = r.deliveries!=null? r.deliveries : (r.sends||0);
+    b.sends+=r.sends||0; b.clicks+=r.clicks||0; b.orders+=r.orders||0; b.revenue+=r.revenue||0;
+    if(r.deliveries!=null){ b.deliveries+=r.deliveries; b._hasDeliv=true; b._sendsWithDeliv+=r.sends||0; }
+    if(r.opens!=null){ b.opens+=r.opens; b._hasOpens=true; b._openReach+=reach; }
+    if(r.failed!=null){ b.failed+=r.failed; b._hasFailed=true; }
+    if(r.unsubscribes!=null){ b.unsubscribes+=r.unsubscribes; b._hasUnsub=true; }
+    if(r.spend!=null){ b.spend+=r.spend; b._hasSpend=true; }
+  });
+  const total=Object.values(by).reduce((s,b)=>s+b.revenue,0);
+  return Object.values(by).map(b=>{
+    const reach = b._hasDeliv? b.deliveries : b.sends;
+    return {channel:b.channel, campaigns:b.campaigns, sends:b.sends||null, deliveries:b._hasDeliv?b.deliveries:null,
+      orders:b.orders, revenue:b.revenue, spend:b._hasSpend?b.spend:null,
+      rev_share: total? b.revenue/total : null,
+      delivery_rate: (b._hasDeliv && b._sendsWithDeliv)? b.deliveries/b._sendsWithDeliv : null,
+      open_rate: (b._hasOpens && b._openReach)? b.opens/b._openReach : null,
+      click_rate: reach? b.clicks/reach : null,
+      click_to_order: b.clicks? b.orders/b.clicks : null,
+      rev_per_recipient: reach? b.revenue/reach : null,
+      aov: b.orders? b.revenue/b.orders : null,
+      unsub_rate: (b._hasUnsub && reach)? b.unsubscribes/reach : null,
+      roas: b._hasSpend && b.spend? b.revenue/b.spend : null};
+  }).sort((a,b)=>CHAN_ORDER.indexOf(a.channel)-CHAN_ORDER.indexOf(b.channel));
+}
+function median(a){ if(!a.length)return null; const s=[...a].sort((x,y)=>x-y); const m=Math.floor(s.length/2); return s.length%2? s[m] : (s[m-1]+s[m])/2; }
+
+/* ============================================================
+   Render
+   ============================================================ */
+const fmtUSD = n => n==null? '—' : '$'+Number(n).toLocaleString('en-US',{maximumFractionDigits:0});
+const fmtUSD2 = n => n==null? '—' : '$'+Number(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmtPct = n => n==null? '—' : (n*100).toFixed(1)+'%';
+const fmtInt = n => n==null? '—' : Number(n).toLocaleString('en-US');
+const css = k => getComputedStyle(document.documentElement).getPropertyValue(k).trim();
+const chanColor = c => ({email:css('--accent'),sms:css('--ok'),push:'#a371f7',whatsapp:css('--warn')}[c]||css('--mut'));
+let CHARTS=[];
+function freshCanvas(hostId,height){ const h=document.getElementById(hostId);
+  h.innerHTML=`<canvas${height?` height="${height}"`:''}></canvas>`; return h.firstElementChild; }
+
+function render(DATA, keepScroll){
+  CHARTS.forEach(c=>c.destroy()); CHARTS=[];
+  showDash();
+  const VIEW=DATA.meta.view, ALL=DATA.allChannels||DATA.channels||[];
+  renderChanSeg(ALL, VIEW);
+
+  const b=document.getElementById('banner');
+  const viewTxt = VIEW==='all'? '' : chanLabel(VIEW)+' only · ';
+  let btxt = `${viewTxt}${DATA.portfolio.campaign_count} campaigns · ${fmtUSD(DATA.portfolio.revenue)} total revenue`
+    + (DATA.portfolio.vs_baseline? ' · baseline comparison active'
+       : DATA.meta.baselineDropped? ` · baseline hidden (no baseline rows tagged ${chanLabel(VIEW)})` : ' · no baseline rows in data');
+  if(DATA.meta.inferred) btxt += ` · ⚠ channel inferred for ${DATA.meta.inferred} campaign${DATA.meta.inferred>1?'s':''} (no channel column) — check the Ch. column`;
+  b.className='banner '+(DATA.meta.inferred?'warn':'info');
+  b.textContent=btxt;
+
+  const p=DATA.portfolio, vb=p.vs_baseline;
+  const delta=v=> v==null?'':`<div class="dlt ${v>=0?'up':'down'}">${v>=0?'▲':'▼'} ${fmtPct(Math.abs(v))} vs baseline</div>`;
+  const kpis=[
+    ['Attributed revenue',fmtUSD(p.revenue),vb&&delta(vb.revenue_delta)],
+    ['Orders',fmtInt(p.orders),vb&&delta(vb.orders_delta)],
+    ['AOV',fmtUSD(p.aov),vb&&delta(vb.aov_delta)],
+  ];
+  if(p.delivery_rate!=null) kpis.push(['Delivery rate',fmtPct(p.delivery_rate),'']);
+  if(p.has_engagement){
+    if(p.open_rate!=null) kpis.push([p.mixed?'Open rate (email)':'Open rate',fmtPct(p.open_rate),'']);
+    kpis.push([p.mixed?'Click rate (all channels)':'Click rate',fmtPct(p.click_rate),'']);
+  }
+  if(p.roas!=null){ kpis.push(['Spend',fmtUSD(p.spend),'']); kpis.push(['ROAS',p.roas.toFixed(1)+'×','']); }
+  if(p.has_web_funnel){ kpis.push(['Sessions',fmtInt(p.sessions),vb&&delta(vb.sessions_delta)]); kpis.push(['Session → order',fmtPct(p.blended_session_to_order),'']); }
+  document.getElementById('kpis').innerHTML=kpis.map(([l,v,d])=>`<div class="kpi"><div class="lab">${l}</div><div class="val">${v}</div>${d||''}</div>`).join('');
+
+  document.getElementById('summary').textContent = DATA.portfolio_narrative || '';
+
+  // channel breakdown table (always compares all channels in the period)
+  renderChanTable(ALL, VIEW);
+
+  // channel doughnut — share across all channels, current view emphasised
+  CHARTS.push(new Chart(freshCanvas('host_chanRev'),{type:'doughnut',
+    data:{labels:ALL.map(c=>chanLabel(c.channel)),datasets:[{data:ALL.map(c=>c.revenue),
+      backgroundColor:ALL.map(c=> (VIEW==='all'||c.channel===VIEW)? chanColor(c.channel) : chanColor(c.channel)+'40'),
+      borderColor:css('--card')}]},
+    options:{plugins:{legend:{labels:{color:css('--ink')}},
+      tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${fmtUSD(ctx.raw)} (${fmtPct(ALL[ctx.dataIndex].rev_share)})`}}}}}));
+
+  // baseline
+  if(vb){
+    CHARTS.push(new Chart(freshCanvas('host_baseChart'),{type:'bar',
+      data:{labels:['Revenue','Orders','Sessions'],datasets:[
+        {label:'Baseline',backgroundColor:css('--mut'),data:[vb.baseline.revenue,vb.baseline.orders,vb.baseline.sessions]},
+        {label:'Current',backgroundColor:css('--accent'),data:[p.revenue,p.orders,p.sessions]}]},
+      options:{scales:{x:{ticks:{color:css('--mut')}},y:{ticks:{color:css('--mut')},type:'logarithmic'}},plugins:{legend:{labels:{color:css('--ink')}}}}}));
+  }else{ document.getElementById('host_baseChart').innerHTML = DATA.meta.baselineDropped
+      ? `<p style="color:var(--mut)">Your baseline rows aren't tagged with a channel, so they can't be compared against ${chanLabel(VIEW)} alone. Add baseline rows with channel=${chanLabel(VIEW)}, or switch to All channels.</p>`
+      : '<p style="color:var(--mut)">Add rows with period=baseline to compare.</p>'; }
+
+  // funnel (dynamic stages)
+  const top=DATA.campaigns[0];
+  document.getElementById('funnelTitle').innerHTML = `Top ${VIEW==='all'?'':chanLabel(VIEW)+' '}campaign funnel (send &rarr; order)`;
+  if(top){const f=top.funnel;
+    const STAGES=[['sends','Sends'],['deliveries','Delivered'],['opens','Opens'],['clicks','Clicks'],['sessions','Sessions'],['add_to_cart','Add to cart'],['checkout','Checkout'],['orders','Orders']];
+    const present=STAGES.filter(([k])=>f[k]!=null);
+    CHARTS.push(new Chart(freshCanvas('host_funnel',120),{type:'bar',
+      data:{labels:present.map(s=>s[1]),datasets:[{label:(top.name||'Top campaign')+' · '+chanLabel(top.channel),backgroundColor:chanColor(top.channel),data:present.map(s=>f[s[0]])}]},
+      options:{indexAxis:'y',scales:{x:{type:'logarithmic',ticks:{color:css('--mut')}},y:{ticks:{color:css('--ink')}}},plugins:{legend:{labels:{color:css('--ink')}}}}}));
+  }
+
+  // engagement
+  if(p.has_engagement){
+    document.getElementById('engCard').style.display='';
+    const ec=DATA.campaigns.filter(c=>c.rates.open_rate!=null||c.rates.click_rate!=null).slice(0,10);
+    const hasOpen=ec.some(c=>c.rates.open_rate!=null);
+    document.getElementById('engTitle').textContent =
+      VIEW==='email'? 'Email engagement — open & click rate (top campaigns)'
+      : VIEW==='sms'? 'SMS engagement — click rate (top campaigns; SMS has no opens)'
+      : p.mixed? 'Engagement — click rate by campaign (open rate shown for email only)'
+      : `${chanLabel(VIEW==='all'?(ec[0]&&ec[0].channel):VIEW)} engagement (top campaigns)`;
+    const ds=[];
+    if(hasOpen) ds.push({label:'Open rate (email)',backgroundColor:'rgba(139,152,165,.55)',data:ec.map(c=>c.rates.open_rate!=null?+(c.rates.open_rate*100).toFixed(1):null)});
+    ds.push({label:'Click rate',backgroundColor:ec.map(c=>chanColor(c.channel)+(hasOpen?'cc':'')),data:ec.map(c=>c.rates.click_rate!=null?+(c.rates.click_rate*100).toFixed(1):null)});
+    CHARTS.push(new Chart(freshCanvas('host_eng',110),{type:'bar',
+      data:{labels:ec.map(c=>c.name+' ('+chanLabel(c.channel)+')'),datasets:ds},
+      options:{scales:{x:{ticks:{color:css('--mut'),maxRotation:60,minRotation:30}},y:{ticks:{color:css('--mut')}}},plugins:{legend:{labels:{color:css('--ink')}}}}}));
+  }else{ document.getElementById('engCard').style.display='none'; }
+
+  // discount
+  const dd=DATA.campaigns.filter(c=>c.discount_dependency!=null).slice(0,12);
+  if(dd.length){
+    document.getElementById('discCard').style.display='';
+    CHARTS.push(new Chart(freshCanvas('host_disc',110),{type:'bar',
+      data:{labels:dd.map(c=>c.name||c.utm.campaign),datasets:[{label:'% of revenue on discount',backgroundColor:'#d29922',data:dd.map(c=>+(c.discount_dependency*100).toFixed(1))}]},
+      options:{scales:{x:{ticks:{color:css('--mut')}},y:{ticks:{color:css('--mut')}}},plugins:{legend:{labels:{color:css('--ink')}}}}}));
+  }else{ document.getElementById('discCard').style.display='none'; }
+
+  // table (adaptive columns)
+  const get=(o,path)=>path.split('.').reduce((a,k)=>a==null?null:a[k],o);
+  const anyCol=k=>DATA.campaigns.some(c=>get(c,k)!=null);
+  const cols=[
+    ['name','Campaign', c=>c.name||c.utm.campaign||'—'],
+    ['channel','Ch.', c=>`<span class="pill ${c.channel||'other'}"${c.inferred?' title="Inferred — no channel column"':''}>${chanLabel(c.channel||'other')}${c.inferred?'*':''}</span>`],
+    ['revenue','Revenue', c=>fmtUSD(c.revenue)],
+    ['funnel.orders','Orders', c=>fmtInt(c.funnel.orders)],
+    ['aov','AOV', c=>fmtUSD(c.aov)],
+  ];
+  if(anyCol('rates.open_rate'))  cols.push(['rates.open_rate','Open%', c=>fmtPct(c.rates.open_rate)]);
+  if(anyCol('rates.click_rate')) cols.push(['rates.click_rate','Click%', c=>fmtPct(c.rates.click_rate)]);
+  cols.push(['rates.click_to_order','Clk→Ord', c=>fmtPct(get(c,'rates.click_to_order'))]);
+  if(anyCol('funnel.sessions')){ cols.push(['funnel.sessions','Sessions', c=>fmtInt(c.funnel.sessions)]); cols.push(['rates.session_to_order','Sess→Ord', c=>fmtPct(get(c,'rates.session_to_order'))]); }
+  if(anyCol('rates.delivery_rate')) cols.push(['rates.delivery_rate','Deliv%', c=>fmtPct(c.rates.delivery_rate)]);
+  if(anyCol('rates.rev_per_recipient')) cols.push(['rates.rev_per_recipient','Rev/rcpt', c=>fmtUSD2(c.rates.rev_per_recipient)]);
+  if(anyCol('roas')) cols.push(['roas','ROAS', c=>c.roas==null?'—':c.roas.toFixed(1)+'×']);
+  if(anyCol('rates.unsub_rate'))  cols.push(['rates.unsub_rate','Unsub%', c=>fmtPct(c.rates.unsub_rate)]);
+  if(anyCol('rates.bounce_rate')) cols.push(['rates.bounce_rate','Bounce%', c=>fmtPct(c.rates.bounce_rate)]);
+  if(anyCol('discount_dependency')) cols.push(['discount_dependency','Disc%', c=>fmtPct(c.discount_dependency)]);
+  if(anyCol('new_customer_share'))  cols.push(['new_customer_share','New%', c=>fmtPct(c.new_customer_share)]);
+  cols.push(['narrative','Verdict', c=>`<span class="verdict">${c.narrative||''}</span>`]);
+
+  let sortKey='revenue',sortDir=-1;
+  function drawTable(){
+    const rows=[...DATA.campaigns].sort((a,b)=>{const x=get(a,sortKey),y=get(b,sortKey); if(x==null)return 1;if(y==null)return -1;return (x>y?1:x<y?-1:0)*sortDir;});
+    const t=document.getElementById('tbl');
+    t.innerHTML='<tr>'+cols.map(c=>`<th data-k="${c[0]}">${c[1]}</th>`).join('')+'</tr>'+
+      rows.map(c=>'<tr>'+cols.map(col=>`<td>${col[2](c)}</td>`).join('')+'</tr>').join('');
+    t.querySelectorAll('th').forEach(th=>th.onclick=()=>{const k=th.dataset.k; if(k===sortKey)sortDir*=-1;else{sortKey=k;sortDir=-1;} drawTable();});
+  }
+  drawTable();
+
+  document.getElementById('foot').textContent =
+    'Revenue is taken from your uploaded data; rates, AOV, open/click %, discount % and new-customer % are computed per campaign. '
+    + 'Verdicts benchmark each campaign against the median of its own channel. Open rate excludes SMS (no opens). ' + (vb? vb.note : '');
+  if(!keepScroll) window.scrollTo(0,0);
+}
+
+/* ============================================================
+   Channel segregation — segmented control + breakdown table
+   ============================================================ */
+var CHANNEL='all';
+function renderChanSeg(all, view){
+  const bar=document.getElementById('chanBar'), seg=document.getElementById('chanSeg');
+  const total=all.reduce((s,c)=>s+c.campaigns,0);
+  const opts=[['all','All channels',total]].concat(all.map(c=>[c.channel,chanLabel(c.channel),c.campaigns]));
+  seg.innerHTML=opts.map(([k,l,n])=>`<button data-ch="${k}" class="${k===view?'on':''}">${l}<span class="n">${n}</span></button>`).join('');
+  seg.querySelectorAll('button').forEach(btn=>btn.onclick=()=>setChannel(btn.dataset.ch));
+  document.getElementById('chanMeta').textContent = all.length<2
+    ? `Only ${all[0]?chanLabel(all[0].channel):'one channel'} in this data — add an SMS/email export with "＋ Add file to dataset" to compare.`
+    : (view==='all'? 'Showing all channels combined' : `Showing ${chanLabel(view)} only — KPIs, charts and table are filtered`);
+}
+function renderChanTable(all, view){
+  const card=document.getElementById('chanCard');
+  if(all.length<2){ card.style.display='none'; return; }
+  card.style.display='';
+  const any=k=>all.some(c=>c[k]!=null);
+  const cols=[['Channel',c=>`<span class="pill ${c.channel}">${chanLabel(c.channel)}</span>`],
+    ['Campaigns',c=>fmtInt(c.campaigns)],['Recipients',c=>fmtInt(c.sends)]];
+  if(any('delivery_rate')) cols.push(['Deliv%',c=>fmtPct(c.delivery_rate)]);
+  if(any('open_rate')) cols.push(['Open%',c=>fmtPct(c.open_rate)]);
+  cols.push(['Click%',c=>fmtPct(c.click_rate)],['Clk→Ord',c=>fmtPct(c.click_to_order)],['Orders',c=>fmtInt(c.orders)],
+    ['Revenue',c=>fmtUSD(c.revenue)],['Rev share',c=>fmtPct(c.rev_share)],['Rev/rcpt',c=>fmtUSD2(c.rev_per_recipient)],['AOV',c=>fmtUSD(c.aov)]);
+  if(any('unsub_rate')) cols.push(['Unsub%',c=>fmtPct(c.unsub_rate)]);
+  if(any('roas')) cols.push(['ROAS',c=>c.roas==null?'—':c.roas.toFixed(1)+'×']);
+  const t=document.getElementById('chanTbl');
+  t.innerHTML='<tr>'+cols.map(c=>`<th style="cursor:default">${c[0]}</th>`).join('')+'</tr>'+
+    all.map(c=>`<tr data-ch="${c.channel}" class="${c.channel===view?'sel':''}">`+cols.map(col=>`<td>${col[1](c)}</td>`).join('')+'</tr>').join('');
+  t.querySelectorAll('tr[data-ch]').forEach(tr=>tr.onclick=()=>setChannel(tr.dataset.ch===view?'all':tr.dataset.ch));
+  document.getElementById('chanNote').textContent =
+    'Rev/rcpt = revenue per delivered message (or per recipient when deliveries are missing) — the fairest like-for-like comparison between email and SMS. '
+    + (any('open_rate')? 'Open% is email only. ' : '') + 'Figures follow the selected period.';
+}
+function renderView(rows, keepScroll){
+  const full=analyze(rows,{channel:'all'});
+  const chans=full.channels.map(c=>c.channel);
+  if(CHANNEL!=='all' && chans.indexOf(CHANNEL)===-1) CHANNEL='all';
+  const data = CHANNEL==='all'? full : analyze(rows,{channel:CHANNEL});
+  data.allChannels = full.channels;
+  render(data, keepScroll);
+}
+function setChannel(ch){
+  CHANNEL=ch;
+  const ds=getDataset(getCurrent()); if(!ds) return;
+  try{ renderView(filterRows(ds.rows), true); }catch(e){ setStatus('Could not analyze: '+e.message,'err'); }
+}
+
+/* ============================================================
+   View switching + dataset index UI
+   ============================================================ */
+function showDash(){ document.getElementById('uploader').style.display='none';
+  document.getElementById('savedPanel').style.display='none'; document.getElementById('dash').style.display='block'; }
+function showHome(){ document.getElementById('dash').style.display='none';
+  document.getElementById('uploader').style.display='block'; renderSaved(); }
+
+function summarize(rows){ try{ const a=analyze(rows); return {campaigns:a.portfolio.campaign_count, revenue:a.portfolio.revenue,
+  channels:a.channels.map(c=>({channel:c.channel,campaigns:c.campaigns}))}; }catch(e){ return null; } }
+
+/* ============================================================
+   Period filtering — slices rows by send_time before analysis
+   ============================================================ */
+var PERIOD = {grain:'all', bucket:null, from:null, to:null};
+
+// Reads the send_time column through the same synonym map as everything else,
+// so it works on raw Klaviyo exports too.
+function rowDate(row, hmap){
+  if(!hmap.send_time) return null;
+  var raw = row[hmap.send_time];
+  if(raw==null || raw==='') return null;
+  var d = new Date(raw);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function isBaselineRow(row, hmap){
+  if(!hmap.period) return false;
+  return String(row[hmap.period]||'').toLowerCase().trim()==='baseline';
+}
+
+function pad(n){ return (n<10?'0':'')+n; }
+
+// ISO week: weeks start Monday, week 1 contains the first Thursday.
+function isoWeek(d){
+  var t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  var day = t.getUTCDay() || 7;
+  t.setUTCDate(t.getUTCDate() + 4 - day);
+  var yStart = new Date(Date.UTC(t.getUTCFullYear(),0,1));
+  var wk = Math.ceil((((t - yStart)/86400000)+1)/7);
+  return {year:t.getUTCFullYear(), week:wk};
+}
+
+function bucketKey(d, grain){
+  if(grain==='year')  return String(d.getFullYear());
+  if(grain==='month') return d.getFullYear()+'-'+pad(d.getMonth()+1);
+  if(grain==='week'){ var w=isoWeek(d); return w.year+'-W'+pad(w.week); }
+  return null;
+}
+
+// Rows without a usable date can't be bucketed. They are counted and reported
+// rather than silently dropped — a vanished campaign is worse than a visible gap.
+function periodScan(rows){
+  if(!rows.length) return {hmap:{}, dated:0, undated:0, buckets:[]};
+  var hmap = buildHeaderMap(Object.keys(rows[0]));
+  var counts = {}, dated=0, undated=0;
+  rows.forEach(function(r){
+    if(isBaselineRow(r,hmap)) return;           // baseline rows are timeless
+    var d = rowDate(r,hmap);
+    if(!d){ undated++; return; }
+    dated++;
+    var g = PERIOD.grain;
+    if(g==='week'||g==='month'||g==='year'){
+      var k = bucketKey(d,g); counts[k]=(counts[k]||0)+1;
+    }
+  });
+  return {hmap:hmap, dated:dated, undated:undated,
+          buckets:Object.keys(counts).sort().reverse(), counts:counts};
+}
+
+function filterRows(rows){
+  if(PERIOD.grain==='all') return rows;
+  if(!rows.length) return rows;
+  var hmap = buildHeaderMap(Object.keys(rows[0]));
+  if(!hmap.send_time) return rows;
+
+  return rows.filter(function(r){
+    // Always keep baseline rows, or "current vs baseline" breaks under a filter.
+    if(isBaselineRow(r,hmap)) return true;
+    var d = rowDate(r,hmap);
+    if(!d) return false;
+    if(PERIOD.grain==='custom'){
+      if(PERIOD.from && d < PERIOD.from) return false;
+      if(PERIOD.to   && d > PERIOD.to)   return false;
+      return true;
+    }
+    return bucketKey(d, PERIOD.grain) === PERIOD.bucket;
+  });
+}
+
+function applyPeriod(skipRender){
+  var id = getCurrent(); var ds = id && getDataset(id);
+  if(!ds) return;
+  var scan = periodScan(ds.rows);
+  var meta = document.getElementById('periodMeta');
+  var bSel = document.getElementById('bucketSel');
+  var cWrap= document.getElementById('customWrap');
+
+  if(!scan.hmap.send_time){
+    document.getElementById('grainSel').value='all'; PERIOD.grain='all';
+    bSel.style.display='none'; cWrap.style.display='none';
+    meta.textContent='No send_time / date column in this data — period filtering unavailable.';
+    return;
+  }
+
+  bSel.style.display = (PERIOD.grain==='week'||PERIOD.grain==='month'||PERIOD.grain==='year') ? '' : 'none';
+  cWrap.style.display= (PERIOD.grain==='custom') ? '' : 'none';
+
+  if(bSel.style.display===''){
+    if(!scan.buckets.length){
+      meta.textContent='No dated rows to group.'; return;
+    }
+    if(scan.buckets.indexOf(PERIOD.bucket)===-1) PERIOD.bucket = scan.buckets[0];
+    bSel.innerHTML = scan.buckets.map(function(b){
+      return '<option value="'+b+'"'+(b===PERIOD.bucket?' selected':'')+'>'+b+' ('+scan.counts[b]+')</option>';
+    }).join('');
+  }
+
+  var filtered = filterRows(ds.rows);
+  var shown = filtered.filter(function(r){ return !isBaselineRow(r,scan.hmap); }).length;
+  var note = shown+' of '+scan.dated+' dated campaigns';
+  if(scan.undated) note += ' · '+scan.undated+' row'+(scan.undated>1?'s':'')+' with no date excluded';
+  meta.textContent = PERIOD.grain==='all' ? (scan.undated? scan.undated+' rows have no date' : '') : note;
+
+  if(!shown){
+    setStatus('No campaigns in that period.','err');
+    return;
+  }
+  // openDataset has already rendered the unfiltered view; don't redraw it.
+  if(skipRender) return;
+  try{ renderView(filtered, true); }
+  catch(e){ setStatus('Could not analyze that period: '+e.message,'err'); }
+}
+
+function wirePeriod(){
+  document.getElementById('grainSel').addEventListener('change', function(e){
+    PERIOD.grain = e.target.value; PERIOD.bucket=null; applyPeriod();
+  });
+  document.getElementById('bucketSel').addEventListener('change', function(e){
+    PERIOD.bucket = e.target.value; applyPeriod();
+  });
+  ['dFrom','dTo'].forEach(function(id){
+    document.getElementById(id).addEventListener('change', function(){
+      var f=document.getElementById('dFrom').value, t=document.getElementById('dTo').value;
+      PERIOD.from = f? new Date(f+'T00:00:00') : null;
+      // Inclusive of the end date, so "to 31 Aug" includes the 31st.
+      PERIOD.to   = t? new Date(t+'T23:59:59') : null;
+      if(PERIOD.from && PERIOD.to && PERIOD.from > PERIOD.to){
+        setStatus('Start date is after end date.','err'); return;
+      }
+      applyPeriod();
+    });
+  });
+}
+
+function openDataset(id){
+  const ds=getDataset(id); if(!ds){ showHome(); return; }
+  setCurrent(id);
+  // A new dataset starts unfiltered; a stale bucket from the last one would
+  // silently hide most of it.
+  PERIOD={grain:'all', bucket:null, from:null, to:null};
+  CHANNEL='all';
+  const gs=document.getElementById('grainSel'); if(gs) gs.value='all';
+  const df=document.getElementById('dFrom'), dt=document.getElementById('dTo');
+  if(df) df.value=''; if(dt) dt.value='';
+  try{ renderView(ds.rows); }catch(e){ setStatus('Could not analyze "'+ds.name+'": '+e.message,'err'); showHome(); return; }
+  syncDsBar(id);
+  applyPeriod(true);
+}
+function syncDsBar(id){
+  const idx=loadIndex(), sel=document.getElementById('dsSelect');
+  sel.innerHTML=idx.map(d=>`<option value="${d.id}">${escapeHtml(d.name)}</option>`).join('');
+  sel.value=id;
+  const d=getDataset(id);
+  document.getElementById('dsMeta').textContent = d? `saved ${new Date(d.savedAt).toLocaleString()}` : '';
+}
+function renderSaved(){
+  const idx=loadIndex(), el=document.getElementById('savedList'), panel=document.getElementById('savedPanel');
+  if(!idx.length){ panel.style.display='none'; el.innerHTML=''; return; }
+  panel.style.display='block';
+  el.innerHTML=idx.map(d=>{
+    const s=d.summary? `${d.summary.campaigns} campaigns · ${fmtUSD(d.summary.revenue)}`
+      + (d.summary.channels&&d.summary.channels.length? ' · '+d.summary.channels.map(c=>c.campaigns+' '+chanLabel(c.channel)).join(', ') : '') : '';
+    return `<div class="dsrow">
+      <div class="meta"><div class="nm">${escapeHtml(d.name)}</div>
+        <div class="dt">${new Date(d.savedAt).toLocaleString()}${s? ' · '+s : ''}</div></div>
+      <button class="btn sm" data-open="${d.id}">Open</button>
+      <button class="btn ghost sm" data-rename="${d.id}">Rename</button>
+      <button class="btn danger sm" data-del="${d.id}">Delete</button></div>`;
+  }).join('');
+  el.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>openDataset(b.dataset.open));
+  el.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{ const d=getDataset(b.dataset.del);
+    if(confirm('Delete "'+(d?d.name:'')+'"? This cannot be undone.')){ deleteDataset(b.dataset.del); renderSaved(); } });
+  el.querySelectorAll('[data-rename]').forEach(b=>b.onclick=()=>{ const d=getDataset(b.dataset.rename);
+    const nm=prompt('Rename dataset:', d?d.name:''); if(nm&&nm.trim()){ renameDataset(b.dataset.rename,nm.trim()); renderSaved(); } });
+}
+function escapeHtml(s){ return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+/* ============================================================
+   Input handling — parse, save to index, then open
+   ============================================================ */
+const statusEl=document.getElementById('status');
+function setStatus(msg,cls){ statusEl.textContent=msg; statusEl.className='status '+(cls||''); }
+function ingest(rows,name,sources){
+  try{ analyze(rows); }catch(e){ setStatus('Could not analyze '+name+': '+e.message,'err'); return; }
+  const id=addDataset(name, rows, summarize(rows));
+  if(id){ if(sources){ setSources(id,sources); } openDataset(id); }
+}
+function setSources(id,sources){ const idx=loadIndex(); const d=idx.find(x=>x.id===id); if(d){ d.sources=sources; saveIndex(idx);} }
+function parseOne(file){
+  return new Promise((resolve,reject)=>Papa.parse(file,{header:true,skipEmptyLines:true,
+    complete:res=>resolve({name:file.name,rows:res.data}), error:err=>reject(new Error(file.name+': '+err.message))}));
+}
+// Parses every file, canonicalises each against its own headers, then concatenates.
+async function parseFiles(files){
+  const out=await Promise.all([...files].map(parseOne));
+  let rows=[]; const notes=[];
+  out.forEach(f=>{
+    const c=canonicalizeRows(f.rows,f.name);
+    const chs={}; c.forEach(r=>{ const k=canonChannel(r.channel)||'unlabelled'; chs[k]=(chs[k]||0)+1; });
+    notes.push(`${f.name}: ${f.rows.length} rows (${Object.entries(chs).map(([k,n])=>n+' '+(CHAN_LABEL[k]||k)).join(', ')})`);
+    rows=rows.concat(c);
+  });
+  return {rows, notes, names:out.map(f=>f.name)};
+}
+
+const drop=document.getElementById('drop'), fileInput=document.getElementById('file');
+drop.onclick=()=>fileInput.click();
+drop.ondragover=e=>{e.preventDefault();drop.classList.add('drag');};
+drop.ondragleave=()=>drop.classList.remove('drag');
+drop.ondrop=e=>{e.preventDefault();drop.classList.remove('drag'); if(e.dataTransfer.files.length) parseFile(e.dataTransfer.files);};
+fileInput.onchange=e=>{ if(e.target.files.length) parseFile(e.target.files); e.target.value=''; };
+async function parseFile(files){
+  files = files instanceof File ? [files] : [...files];
+  setStatus('Parsing '+files.length+' file'+(files.length>1?'s':'')+'…');
+  try{
+    const r=await parseFiles(files);
+    setStatus('Loaded '+r.notes.join(' · '),'ok');
+    const name = files.length===1? files[0].name.replace(/\.csv$/i,'') : 'Merged — '+r.names.map(n=>n.replace(/\.csv$/i,'')).join(' + ');
+    ingest(r.rows, name, r.names);
+  }catch(e){ setStatus('Parse error: '+e.message,'err'); }
+}
+// Append more files (e.g. the SMS export) to the dataset that's open.
+async function addFilesToCurrent(files){
+  const id=getCurrent(), ds=getDataset(id); if(!ds) return;
+  const already=(ds.sources||[]).filter(n=>[...files].some(f=>f.name===n));
+  if(already.length && !confirm(already.join(', ')+' is already in this dataset. Adding it again will double-count those campaigns. Continue?')) return;
+  try{
+    const r=await parseFiles(files);
+    // Old datasets hold raw rows; canonicalise them so mixed headers line up.
+    const base=canonicalizeRows(ds.rows, '');
+    const rows=base.concat(r.rows);
+    analyze(rows);
+    const idx=loadIndex(); const d=idx.find(x=>x.id===id);
+    d.rows=rows; d.summary=summarize(rows); d.sources=(d.sources||[]).concat(r.names);
+    if(!saveIndex(idx)){ alert('Could not save: browser storage is full.'); return; }
+    setStatus('Added '+r.notes.join(' · '),'ok');
+    openDataset(id);
+  }catch(e){ alert('Could not add file: '+e.message); }
+}
+document.getElementById('gsload').onclick=()=>{
+  const url=document.getElementById('gsurl').value.trim();
+  if(!url){ setStatus('Paste a Google Sheets link first.','err'); return; }
+  const m=url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  if(!m){ setStatus('That does not look like a Google Sheets link.','err'); return; }
+  const gid=(url.match(/[#&?]gid=([0-9]+)/)||[])[1]||'0';
+  const csvUrl=`https://docs.google.com/spreadsheets/d/${m[1]}/gviz/tq?tqx=out:csv&gid=${gid}`;
+  setStatus('Fetching sheet…');
+  Papa.parse(csvUrl,{download:true,header:true,skipEmptyLines:true,
+    complete:res=>{ if(!res.data.length){setStatus('Sheet loaded but empty — is it shared publicly?','err');return;}
+      setStatus('Loaded '+res.data.length+' rows from Google Sheets','ok'); ingest(canonicalizeRows(res.data,''), 'Google Sheet '+new Date().toLocaleDateString()); },
+    error:err=>setStatus('Could not read the sheet ('+err.message+'). Make sure it is shared as "Anyone with the link".','err')});
+};
+document.getElementById('sample').onclick=()=>{ setStatus('Loaded built-in sample data','ok'); ingest(canonicalizeRows(SAMPLE_ROWS,''),'Sample — Summer Sale (email + SMS)'); };
+document.getElementById('template').onclick=()=>{
+  const blob=new Blob([TEMPLATE_CSV],{type:'text/csv'}); const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download='campaign_data_template.csv'; a.click(); URL.revokeObjectURL(a.href);
+};
+
+// dashboard dataset bar
+document.getElementById('dsSelect').onchange=e=>openDataset(e.target.value);
+document.getElementById('dsNew').onclick=()=>{ setStatus(''); showHome(); };
+document.getElementById('dsAdd').onclick=()=>document.getElementById('addFile').click();
+document.getElementById('addFile').onchange=e=>{ if(e.target.files.length) addFilesToCurrent(e.target.files); e.target.value=''; };
+document.getElementById('dsDelete').onclick=()=>{
+  const id=getCurrent(), d=getDataset(id); if(!d)return;
+  if(!confirm('Delete "'+d.name+'"? This cannot be undone.')) return;
+  deleteDataset(id);
+  const idx=loadIndex();
+  if(idx.length){ openDataset(idx[0].id); } else { showHome(); }
+};
+document.getElementById('dsRename').onclick=()=>{
+  const id=getCurrent(), d=getDataset(id); if(!d)return;
+  const nm=prompt('Rename dataset:', d.name); if(nm&&nm.trim()){ renameDataset(id,nm.trim()); syncDsBar(id); }
+};
+
+/* ============================================================
+   Boot — reopen last dataset if one exists
+   ============================================================ */
+function exportAll(){
+  var idx = loadIndex();
+  if(!idx.length){ setStatus('No saved datasets to export.','err'); return; }
+  var payload = {format:'cpa-datasets', version:1,
+                 exportedAt:new Date().toISOString(), datasets:idx};
+  var blob = new Blob([JSON.stringify(payload)], {type:'application/json'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'campaign-analyser-datasets-' + new Date().toISOString().slice(0,10) + '.json';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(a.href);
+  setStatus('Exported ' + idx.length + ' dataset' + (idx.length>1?'s':'') + '.','ok');
+}
+
+function importDatasets(text){
+  var payload;
+  try{ payload = JSON.parse(text); }
+  catch(e){ setStatus('That file is not valid JSON.','err'); return; }
+
+  var incoming = payload && payload.datasets;
+  if(!Array.isArray(incoming) || !incoming.length){
+    setStatus('No datasets found in that file.','err'); return;
+  }
+
+  var idx = loadIndex();
+  var existing = {};
+  idx.forEach(function(d){ existing[d.id]=true; });
+
+  var added=0, skipped=0;
+  incoming.forEach(function(d){
+    if(!d || !Array.isArray(d.rows)) { skipped++; return; }
+    // Import is additive: never overwrite a dataset already in this browser.
+    if(existing[d.id]){ skipped++; return; }
+    idx.unshift({id:d.id||uid(), name:d.name||'Imported dataset',
+                 savedAt:d.savedAt||new Date().toISOString(),
+                 rows:d.rows, summary:d.summary||summarize(d.rows)});
+    added++;
+  });
+
+  if(!saveIndex(idx)){
+    setStatus('Could not save: browser storage is full. Delete a dataset and retry.','err');
+    return;
+  }
+  renderSaved();
+  var msg = 'Imported ' + added + ' dataset' + (added===1?'':'s');
+  if(skipped) msg += ' · ' + skipped + ' skipped (already here, or unreadable)';
+  setStatus(msg, added? 'ok':'err');
+}
+
+(function boot(){
+  renderSaved();
+  wirePeriod();
+  document.getElementById('exportAll').addEventListener('click', exportAll);
+  document.getElementById('importBtn').addEventListener('click', function(){
+    document.getElementById('importFile').click();
+  });
+  document.getElementById('importFile').addEventListener('change', function(e){
+    var f=e.target.files && e.target.files[0]; if(!f) return;
+    var r=new FileReader();
+    r.onload=function(){ importDatasets(String(r.result)); };
+    r.onerror=function(){ setStatus('Could not read that file.','err'); };
+    r.readAsText(f);
+    e.target.value='';   // allow re-importing the same file
+  });
+  const cur=getCurrent();
+  if(cur && getDataset(cur)){ openDataset(cur); }
+  else { document.getElementById('dash').style.display='none'; document.getElementById('uploader').style.display='block'; }
+})();
+</script>
+</body></html>
