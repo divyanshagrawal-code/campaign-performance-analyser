@@ -447,13 +447,15 @@ function canonicalizeRows(rows, fname){
   });
 }
 function refreshRows(rows){ return (rows.length && rows[0] && rows[0]._raw)? canonicalizeRows(rows,'') : rows; }
-// Klaviyo writes "2026-08-01 14:30:00-0400"; normalise to ISO so every browser parses it.
+// Klaviyo writes "2026-08-01 14:30:00-0400" in the account's timezone.
+// Use the date and time exactly as written (the sender's calendar), and ignore
+// the offset, so a 2:30 pm EDT send stays on 1 Aug for a viewer in India
+// instead of becoming 12:00 am on 2 Aug. Week/month buckets follow the same day.
 function parseDate(raw){
   const s=String(raw==null?'':raw).trim(); if(!s) return null;
-  const m=s.match(/^(\d{4}-\d{2}-\d{2})(?:[ T](\d{2}:\d{2}(?::\d{2})?)(?:\.\d+)?)?\s*(Z|[+-]\d{2}:?\d{2})?$/i);
+  const m=s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?)?\s*(?:Z|[+-]\d{2}:?\d{2})?$/i);
   let d;
-  if(m){ let tz=m[3]||''; if(tz && tz!=='Z' && tz.toUpperCase()!=='Z' && tz.indexOf(':')<0) tz=tz.slice(0,3)+':'+tz.slice(3);
-         d=new Date(m[1]+'T'+(m[2]||'00:00:00')+tz); }
+  if(m) d=new Date(+m[1], +m[2]-1, +m[3], +(m[4]||0), +(m[5]||0), +(m[6]||0));
   else d=new Date(s);
   return isNaN(d.getTime())? null : d;
 }
