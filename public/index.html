@@ -853,6 +853,13 @@ function isoWeek(d){
   return {year:t.getUTCFullYear(), week:wk};
 }
 
+// Display label only — the bucket value stays sortable (2026-10, 2026-W41).
+var MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function bucketLabel(b){
+  var m=/^(\d{4})-(\d{2})$/.exec(b);
+  if(m) return m[1]+'-'+MON[+m[2]-1];
+  return b;
+}
 function bucketKey(d, grain){
   if(grain==='year')  return String(d.getFullYear());
   if(grain==='month') return d.getFullYear()+'-'+pad(d.getMonth()+1);
@@ -924,7 +931,7 @@ function applyPeriod(skipRender){
     }
     if(scan.buckets.indexOf(PERIOD.bucket)===-1) PERIOD.bucket = scan.buckets[0];
     bSel.innerHTML = scan.buckets.map(function(b){
-      return '<option value="'+b+'"'+(b===PERIOD.bucket?' selected':'')+'>'+b+' ('+scan.counts[b]+')</option>';
+      return '<option value="'+b+'"'+(b===PERIOD.bucket?' selected':'')+'>'+bucketLabel(b)+' ('+scan.counts[b]+')</option>';
     }).join('');
   }
 
