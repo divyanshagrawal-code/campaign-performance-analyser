@@ -102,7 +102,7 @@
   .kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent);opacity:.85}
   .kpi .lab{color:var(--mut);font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:.05em}
   .kpi .val{font-size:24px;font-weight:700;margin-top:6px;letter-spacing:-.02em;color:var(--ink)}
-  .kpi .dlt{display:inline-block;font-size:11.5px;font-weight:600;margin-top:6px;padding:2px 7px;border-radius:20px}
+  .kpi .dlt{display:inline-block;font-size:11.5px;font-weight:600;margin-top:6px;padding:2px 7px;border-radius:20px;color:var(--mut);background:var(--line2)}
   .kpi .dlt.up{color:var(--ok);background:var(--ok-soft)} .kpi .dlt.down{color:var(--bad);background:var(--bad-soft)}
   .up{color:var(--ok)} .down{color:var(--bad)}
 
@@ -148,6 +148,11 @@
   #chanTbl tr[data-ch]{cursor:pointer}
   #chanTbl th{cursor:default}
   .note{color:var(--mut);font-size:12px;margin-top:12px}
+  #compareBar{margin-top:0}
+  .cmptbl td,.cmptbl th{padding:8px 10px}
+  .cmptbl th{cursor:default}
+  .cmptbl td.chg.up{color:var(--ok);font-weight:600} .cmptbl td.chg.down{color:var(--bad);font-weight:600}
+  .cmpwarn{color:var(--warn)}
   .cardhd{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
   .cardhd h3{margin:0;flex:1;min-width:260px}
   .tblctl{display:flex;gap:8px;align-items:center}
@@ -272,6 +277,23 @@
       <span class="spacer"></span>
       <span class="dt" id="periodMeta" style="color:var(--mut);font-size:12px"></span>
     </div>
+    <div class="dsbar" id="compareBar">
+      <label>Compare</label>
+      <select id="cmpSel">
+        <option value="off">No comparison</option>
+        <option value="prev">Previous period</option>
+        <option value="yoy">Same period last year</option>
+        <option value="custom">Custom dates</option>
+        <option value="rows">Baseline rows in file</option>
+      </select>
+      <span id="cmpCustom" style="display:none">
+        <input type="date" id="cFrom" class="inp sm"/>
+        <span style="color:var(--mut)">to</span>
+        <input type="date" id="cTo" class="inp sm"/>
+      </span>
+      <span class="spacer"></span>
+      <span class="dt" id="cmpMeta" style="color:var(--mut);font-size:12px"></span>
+    </div>
 
     <div class="dsbar" id="chanBar">
       <label>Channel</label>
@@ -292,7 +314,7 @@
 
     <div class="grid2">
       <div class="card"><h3>Revenue share by channel</h3><div id="host_chanRev"></div></div>
-      <div class="card"><h3>Current vs baseline</h3><div id="host_baseChart"></div></div>
+      <div class="card"><h3 id="baseTitle">Current vs baseline</h3><div id="host_baseChart"></div></div>
     </div>
 
     <div class="card" style="margin-bottom:26px"><h3 id="funnelTitle">Top-campaign funnel (send &rarr; order)</h3>
@@ -682,7 +704,7 @@ function autoPortfolio(camps,rev,vb,channels,view,groups){
   const top=camps[0];
   const G=groups&&groups.length<camps.length? groups : null;
   const unit=G? 'send' : 'campaign';
-  const lift = vb&&vb.revenue_delta!=null? ` (${vb.revenue_delta>=0?"+":""}${(vb.revenue_delta*100).toFixed(0)}% vs baseline)` : "";
+  const lift = vb&&vb.revenue_delta!=null? ` (${vb.revenue_delta>=0?"+":""}${(vb.revenue_delta*100).toFixed(0)}% vs ${vb.source==='dates'? vb.label : 'baseline'})` : "";
   const scope = view==='all'? '' : chanLabel(view)+' ';
   let txt = G
     ? `${G.length} ${scope}campaigns (${camps.length} sends) drove ${fmtUSD(rev)} in attributed revenue${lift}. `
@@ -779,24 +801,28 @@ function render(DATA, keepScroll){
   const viewTxt = VIEW==='all'? '' : chanLabel(VIEW)+' only · ';
   const nG=(DATA.groups||[]).length, nS=DATA.portfolio.campaign_count;
   let btxt = `${viewTxt}${nG && nG<nS? `${nG} campaigns (${nS} sends)` : `${nS} campaigns`} · ${fmtUSD(DATA.portfolio.revenue)} total revenue`
-    + (DATA.portfolio.vs_baseline? ' · baseline comparison active'
-       : DATA.meta.baselineDropped? ` · baseline hidden (no baseline rows tagged ${chanLabel(VIEW)})` : ' · no baseline rows in data');
+    + (DATA.portfolio.vs_baseline? (DATA.portfolio.vs_baseline.source==='dates'? ` · compared with ${DATA.portfolio.vs_baseline.label}` : ' · baseline comparison active')
+       : DATA.meta.baselineDropped? ` · baseline hidden (no baseline rows tagged ${chanLabel(VIEW)})`
+       : DATA.meta.compareMode && DATA.meta.compareMode!=='off'? ' · no comparison data' : '');
   if(DATA.meta.inferred) btxt += ` · ⚠ channel inferred for ${DATA.meta.inferred} campaign${DATA.meta.inferred>1?'s':''} (no channel column) — check the Ch. column`;
   b.className='banner '+(DATA.meta.inferred?'warn':'info');
   b.textContent=btxt;
 
   const p=DATA.portfolio, vb=p.vs_baseline;
-  const delta=v=> v==null?'':`<div class="dlt ${v>=0?'up':'down'}">${v>=0?'▲':'▼'} ${fmtPct(Math.abs(v))} vs baseline</div>`;
+  const vsLbl = vb? (vb.source==='dates'? 'vs '+vb.label : 'vs baseline') : '';
+  const delta=v=> v==null?'':`<div class="dlt ${v>=0?'up':'down'}">${v>=0?'▲':'▼'} ${fmtPct(Math.abs(v))} ${escapeHtml(vsLbl)}</div>`;
+  // rates change in percentage points; "lower is better" is not used for any of these
+  const dpp=v=> v==null?'':Math.abs(v)<0.0005?`<div class="dlt">no change ${escapeHtml(vsLbl)}</div>`:`<div class="dlt ${v>=0?'up':'down'}">${v>=0?'▲':'▼'} ${(Math.abs(v)*100).toFixed(1)} pp ${escapeHtml(vsLbl)}</div>`;
   const kpis=[
     ['Attributed revenue',fmtUSD(p.revenue),vb&&delta(vb.revenue_delta)],
     ['Orders',fmtInt(p.orders),vb&&delta(vb.orders_delta)],
     ['AOV',fmtUSD(p.aov),vb&&delta(vb.aov_delta)],
   ];
-  if(p.rev_per_recipient!=null) kpis.push(['Revenue / recipient',fmtUSD2(p.rev_per_recipient),'']);
-  if(p.delivery_rate!=null) kpis.push(['Delivery rate',fmtPct(p.delivery_rate),'']);
+  if(p.rev_per_recipient!=null) kpis.push(['Revenue / recipient',fmtUSD2(p.rev_per_recipient),vb&&delta(vb.rpr_delta)]);
+  if(p.delivery_rate!=null) kpis.push(['Delivery rate',fmtPct(p.delivery_rate),vb&&dpp(vb.deliv_pp)]);
   if(p.has_engagement){
-    if(p.open_rate!=null) kpis.push([p.mixed?'Open rate (email)':'Open rate',fmtPct(p.open_rate),'']);
-    kpis.push([p.mixed?'Click rate (blended)':'Click rate',fmtPct(p.click_rate),'']);
+    if(p.open_rate!=null) kpis.push([p.mixed?'Open rate (email)':'Open rate',fmtPct(p.open_rate),vb&&dpp(vb.open_pp)]);
+    kpis.push([p.mixed?'Click rate (blended)':'Click rate',fmtPct(p.click_rate),vb&&dpp(vb.click_pp)]);
   }
   if(p.roas!=null){ kpis.push(['Spend',fmtUSD(p.spend),'']); kpis.push(['ROAS',p.roas.toFixed(1)+'×','']); }
   if(p.has_web_funnel){ kpis.push(['Sessions',fmtInt(p.sessions),vb&&delta(vb.sessions_delta)]); kpis.push(['Session → order',fmtPct(p.blended_session_to_order),'']); }
@@ -815,13 +841,35 @@ function render(DATA, keepScroll){
     options:{cutout:'64%',plugins:{legend:{position:'right',labels:{color:css('--ink2'),padding:14}},
       tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${fmtUSD(ctx.raw)} (${fmtPct(ALL[ctx.dataIndex].rev_share)})`}}}}}));
 
-  // baseline
+  // comparison: side-by-side table of current vs the comparison period / baseline rows
+  const pr=periodRange();
+  const curLbl = pr? rangeLabel(pr) : 'Current';
+  document.getElementById('baseTitle').textContent = vb
+    ? (vb.source==='dates'? `${curLbl} vs ${vb.label}` : 'Current vs baseline') : 'Current vs baseline';
   if(vb){
-    CHARTS.push(new Chart(freshCanvas('host_baseChart',250),{type:'bar',
-      data:{labels:['Revenue','Orders','Sessions'],datasets:[
-        {label:'Baseline',backgroundColor:'#cbd5e1',data:[vb.baseline.revenue,vb.baseline.orders,vb.baseline.sessions]},
-        {label:'Current',backgroundColor:css('--accent'),data:[p.revenue,p.orders,p.sessions]}]},
-      options:{scales:{x:{ticks:{color:css('--mut')}},y:{ticks:{color:css('--mut')},type:'logarithmic'}},plugins:{legend:{labels:{color:css('--ink')}}}}}));
+    const B=vb.baseline, rows=[];
+    const R=(lab,c,b,fmt,chg,kind)=>{ if(c==null && b==null) return;
+      const cv=chg==null? '—' : kind==='pp'? `${chg>=0?'+':'−'}${(Math.abs(chg)*100).toFixed(1)} pp` : `${chg>=0?'+':'−'}${fmtPct(Math.abs(chg))}`;
+      rows.push(`<tr><td>${lab}</td><td>${b==null?'—':fmt(b)}</td><td>${c==null?'—':fmt(c)}</td><td class="chg ${chg==null||Math.abs(chg)<0.0005?'':chg>0?'up':'down'}">${cv}</td></tr>`); };
+    R('Revenue',p.revenue,B.revenue,fmtUSD,vb.revenue_delta);
+    R('Orders',p.orders,B.orders,fmtInt,vb.orders_delta);
+    R('AOV',p.aov,B.aov,fmtUSD,vb.aov_delta);
+    if(vb.source==='dates'){
+      R('Sends',p.campaign_count,B.campaign_count,fmtInt,vb.sends_delta);
+      R('Revenue / recipient',p.rev_per_recipient,B.rev_per_recipient,fmtUSD2,vb.rpr_delta);
+      R('Open rate (email)',p.open_rate,B.open_rate,fmtPct,vb.open_pp,'pp');
+      R('Click rate',p.click_rate,B.click_rate,fmtPct,vb.click_pp,'pp');
+      R('Delivery rate',p.delivery_rate,B.delivery_rate,fmtPct,vb.deliv_pp,'pp');
+    }
+    if(p.sessions || B.sessions) R('Sessions',p.sessions,B.sessions,fmtInt,vb.sessions_delta);
+    const bl = vb.source==='dates'? vb.label : 'Baseline';
+    document.getElementById('host_baseChart').innerHTML =
+      `<div class="tblwrap" style="max-height:none"><table class="cmptbl"><thead><tr><th>Metric</th><th>${escapeHtml(bl)}</th><th>${escapeHtml(curLbl)}</th><th>Change</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>`
+      + `<div class="note">${vb.source==='dates'? 'Rates change in percentage points (pp). ' : ''}Changes are linked to the campaigns, not proven to be caused by them.</div>`;
+  }else if(DATA.meta.compareMode && !['off','rows'].includes(DATA.meta.compareMode)){
+    document.getElementById('host_baseChart').innerHTML = `<div class="emptyst"><b>Nothing to compare yet</b><span>${DATA.meta.compareRange? `There are no sends dated ${rangeLabel(DATA.meta.compareRange)} in this dataset${VIEW==='all'?'':' for '+chanLabel(VIEW)}.` : 'Choose a week, month, year or full custom range under Period, or enter both compare dates.'}</span></div>`;
+  }else if(DATA.meta.compareMode==='off'){
+    document.getElementById('host_baseChart').innerHTML = '<div class="emptyst"><b>No comparison selected</b><span>Use <b>Compare</b> at the top to compare with the previous period, the same period last year, or any dates you choose.</span></div>';
   }else{ document.getElementById('host_baseChart').innerHTML = DATA.meta.baselineDropped
       ? `<p class="emptyst">Your baseline rows aren't tagged with a channel, so they can't be compared against ${chanLabel(VIEW)} alone. Add baseline rows with channel=${chanLabel(VIEW)}, or switch to All channels.</p>`
       : '<div class="emptyst"><b>No baseline in this data</b><span>Add rows with <code>period = baseline</code> (one per channel) to compare this period against a previous one.</span></div>'; }
@@ -1004,13 +1052,14 @@ function renderView(rows, keepScroll){
   if(CHANNEL!=='all' && chans.indexOf(CHANNEL)===-1) CHANNEL='all';
   const data = CHANNEL==='all'? full : analyze(rows,{channel:CHANNEL});
   data.allChannels = full.channels;
+  const ds=getDataset(getCurrent()), dsRows=ds? ds.rows : rows;
+  if(COMPARE.mode==null) COMPARE.mode = hasBaselineRows(dsRows)? 'rows' : 'off';
+  if(COMPARE.mode==='rows' && !hasBaselineRows(dsRows)) COMPARE.mode='off';
+  applyCompare(data, dsRows);
   render(data, keepScroll);
+  syncCompareBar(data, dsRows);
 }
-function setChannel(ch){
-  CHANNEL=ch;
-  const ds=getDataset(getCurrent()); if(!ds) return;
-  try{ renderView(filterRows(ds.rows), true); }catch(e){ setStatus('Could not analyze: '+e.message,'err'); }
-}
+function setChannel(ch){ CHANNEL=ch; rerenderCurrent(); }
 
 /* ============================================================
    View switching + dataset index UI
@@ -1171,6 +1220,145 @@ function wirePeriod(){
   });
 }
 
+/* ============================================================
+   Compare — the baseline can come from a date range in the same
+   dataset instead of period=baseline rows. Modes:
+     prev   previous period of the same length (previous week / month /
+            year, or the same number of days before a custom range)
+     yoy    same period one year earlier (52 weeks earlier for a week)
+     custom any From–To dates the user enters
+     rows   rows tagged period=baseline in the file (original behaviour)
+     off    no comparison
+   ============================================================ */
+var COMPARE={mode:null, from:null, to:null};
+const DAY=864e5;
+const atStart=d=>new Date(d.getFullYear(),d.getMonth(),d.getDate(),0,0,0);
+const atEnd=d=>new Date(d.getFullYear(),d.getMonth(),d.getDate(),23,59,59);
+const addDays=(d,n)=>new Date(d.getFullYear(),d.getMonth(),d.getDate()+n,d.getHours(),d.getMinutes(),d.getSeconds());
+const shiftYear=(d,n)=>new Date(d.getFullYear()+n,d.getMonth(),d.getDate(),d.getHours(),d.getMinutes(),d.getSeconds());
+// Date range of the Period selection, or null for All time / an incomplete custom range.
+function periodRange(){
+  const g=PERIOD.grain, b=PERIOD.bucket;
+  if(g==='custom') return (PERIOD.from&&PERIOD.to)? {start:PERIOD.from,end:PERIOD.to,grain:'custom'} : null;
+  if(!b) return null;
+  if(g==='month'){ const [y,m]=b.split('-').map(Number); return {start:new Date(y,m-1,1),end:new Date(y,m,0,23,59,59),grain:g}; }
+  if(g==='year'){ const y=+b; return {start:new Date(y,0,1),end:new Date(y,11,31,23,59,59),grain:g}; }
+  if(g==='week'){ const mm=/^(\d{4})-W(\d{2})$/.exec(b); if(!mm) return null;
+    const jan4=new Date(+mm[1],0,4), dow=jan4.getDay()||7, mon1=addDays(jan4,1-dow), st=addDays(mon1,(+mm[2]-1)*7);
+    return {start:atStart(st),end:atEnd(addDays(st,6)),grain:g}; }
+  return null;
+}
+function compareRange(){
+  const mode=COMPARE.mode;
+  if(mode==='custom') return (COMPARE.from&&COMPARE.to)? {start:COMPARE.from,end:COMPARE.to,grain:'custom'} : null;
+  const r=periodRange(); if(!r) return null;
+  if(mode==='prev'){
+    if(r.grain==='month'){ const s0=new Date(r.start.getFullYear(),r.start.getMonth()-1,1); return {start:s0,end:new Date(s0.getFullYear(),s0.getMonth()+1,0,23,59,59),grain:'month'}; }
+    if(r.grain==='year') return {start:shiftYear(r.start,-1),end:shiftYear(r.end,-1),grain:'year'};
+    const days=Math.round((atStart(r.end)-atStart(r.start))/DAY)+1;
+    return {start:atStart(addDays(r.start,-days)),end:atEnd(addDays(r.start,-1)),grain:r.grain};
+  }
+  if(mode==='yoy'){
+    if(r.grain==='week') return {start:addDays(r.start,-364),end:addDays(r.end,-364),grain:'week'};
+    if(r.grain==='month'){ const s0=new Date(r.start.getFullYear()-1,r.start.getMonth(),1); return {start:s0,end:new Date(s0.getFullYear(),s0.getMonth()+1,0,23,59,59),grain:'month'}; }
+    return {start:shiftYear(r.start,-1),end:shiftYear(r.end,-1),grain:r.grain};
+  }
+  return null;
+}
+function rangeLabel(r){
+  if(!r) return '';
+  const s=r.start,e=r.end;
+  if(s.getDate()===1 && e.getDate()===new Date(e.getFullYear(),e.getMonth()+1,0).getDate()){
+    if(s.getFullYear()===e.getFullYear() && s.getMonth()===e.getMonth()) return MON[s.getMonth()]+' '+s.getFullYear();
+    if(s.getMonth()===0 && e.getMonth()===11 && s.getFullYear()===e.getFullYear()) return String(s.getFullYear());
+  }
+  const f=(d,y)=>d.getDate()+' '+MON[d.getMonth()]+(y?' '+d.getFullYear():'');
+  return f(s, s.getFullYear()!==e.getFullYear())+' – '+f(e,true);
+}
+function rowsInRange(rows,r){
+  if(!rows.length||!r) return [];
+  const hmap=buildHeaderMap(Object.keys(rows[0]));
+  if(!hmap.send_time) return [];
+  return rows.filter(x=>{ if(isBaselineRow(x,hmap)) return false; const d=rowDate(x,hmap); return d && d>=r.start && d<=r.end; });
+}
+function hasBaselineRows(rows){
+  if(!rows.length) return false; const hmap=buildHeaderMap(Object.keys(rows[0]));
+  return rows.some(r=>isBaselineRow(r,hmap));
+}
+// Builds the comparison object the KPI cards, summary and comparison table read.
+function buildCompare(cur, base, label, source){
+  const d=(c,b)=> (c!=null && b)? (c-b)/b : null;          // relative change
+  const pp=(c,b)=> (c!=null && b!=null)? c-b : null;         // rate change, percentage points
+  return { source, label,
+    revenue_delta:d(cur.revenue,base.revenue), orders_delta:d(cur.orders,base.orders),
+    sessions_delta:d(cur.sessions,base.sessions), aov_delta:d(cur.aov,base.aov),
+    rpr_delta:d(cur.rev_per_recipient,base.rev_per_recipient),
+    sends_delta:d(cur.campaign_count,base.campaign_count),
+    open_pp:pp(cur.open_rate,base.open_rate), click_pp:pp(cur.click_rate,base.click_rate),
+    deliv_pp:pp(cur.delivery_rate,base.delivery_rate),
+    baseline:base,
+    note: source==='dates'? `Compared with sends dated ${label}.` : base.note };
+}
+// Applies the chosen comparison to an analysed view (data) for the open dataset.
+function applyCompare(data, dsRows){
+  const mode=COMPARE.mode;
+  data.meta.compareMode=mode;
+  if(mode==='rows'){
+    const vb=data.portfolio.vs_baseline;
+    if(vb){ vb.source='rows'; vb.label='baseline rows'; vb.baseline.aov=vb.baseline.orders? vb.baseline.revenue/vb.baseline.orders:null; vb.baseline.campaign_count=null; }
+    return;
+  }
+  data.portfolio.vs_baseline=null;
+  data.meta.baselineDropped=false;
+  if(mode==='off') return;
+  const r=compareRange();
+  data.meta.compareRange=r;
+  if(!r) return;
+  const cr=rowsInRange(dsRows,r);
+  let bp=null;
+  if(cr.length){ try{ const a=analyze(cr,{channel:data.meta.view}); if(a.portfolio.campaign_count) bp=a.portfolio; }catch(e){ bp=null; } }
+  data.meta.compareSends=bp? bp.campaign_count : 0;
+  if(!bp) return;
+  const pr=periodRange();
+  data.meta.compareOverlap = !pr || (r.start<=pr.end && r.end>=pr.start);   // All time always contains the compare dates
+  data.portfolio.vs_baseline=buildCompare(data.portfolio, bp, rangeLabel(r), 'dates');
+  data.portfolio_narrative=autoPortfolio(data.campaigns,data.portfolio.revenue,data.portfolio.vs_baseline,data.channels,data.meta.view,data.groups);
+}
+// Shows/hides the compare inputs and explains what is being compared.
+function syncCompareBar(data, dsRows){
+  const sel=document.getElementById('cmpSel'), meta=document.getElementById('cmpMeta');
+  const hasRows=hasBaselineRows(dsRows), pr=periodRange();
+  sel.querySelector('option[value=rows]').hidden=!hasRows;
+  ['prev','yoy'].forEach(v=>{ sel.querySelector(`option[value=${v}]`).disabled=!pr; });
+  sel.value=COMPARE.mode;
+  document.getElementById('cmpCustom').style.display = COMPARE.mode==='custom'? '' : 'none';
+  const m=COMPARE.mode, cur=pr? rangeLabel(pr) : 'all time';
+  let t='';
+  if(m==='off') t = pr? '' : 'Pick a period above to compare it with the previous period or last year, or choose custom dates.';
+  else if(m==='rows') t='Using rows tagged period = baseline in the file.';
+  else{
+    const r=data.meta.compareRange;
+    if(!r) t = m==='custom'? 'Enter both compare dates.' : 'Pick a week, month, year or complete custom range under Period first.';
+    else if(!data.meta.compareSends) t=`No ${data.meta.view==='all'?'':chanLabel(data.meta.view)+' '}sends in ${rangeLabel(r)} — nothing to compare with.`;
+    else t=`Comparing ${cur} with ${rangeLabel(r)} (${data.meta.compareSends} send${data.meta.compareSends>1?'s':''})`
+      + (data.meta.compareOverlap? ' · <span class="cmpwarn">⚠ the compare dates fall inside the current period, so those sends are counted on both sides</span>' : '');
+  }
+  meta.innerHTML=t;
+}
+function wireCompare(){
+  document.getElementById('cmpSel').addEventListener('change',e=>{ COMPARE.mode=e.target.value; rerenderCurrent(); });
+  ['cFrom','cTo'].forEach(id=>document.getElementById(id).addEventListener('change',()=>{
+    const f=document.getElementById('cFrom').value, t=document.getElementById('cTo').value;
+    COMPARE.from=f? new Date(f+'T00:00:00') : null; COMPARE.to=t? new Date(t+'T23:59:59') : null;
+    if(COMPARE.from&&COMPARE.to&&COMPARE.from>COMPARE.to){ setStatus('Compare start date is after its end date.','err'); return; }
+    rerenderCurrent();
+  }));
+}
+function rerenderCurrent(){
+  const ds=getDataset(getCurrent()); if(!ds) return;
+  try{ renderView(filterRows(ds.rows), true); }catch(e){ setStatus('Could not analyze: '+e.message,'err'); }
+}
+
 function openDataset(id){
   const ds=getDataset(id); if(!ds){ showHome(); return; }
   setCurrent(id);
@@ -1183,6 +1371,8 @@ function openDataset(id){
   // silently hide most of it.
   PERIOD={grain:'all', bucket:null, from:null, to:null};
   CHANNEL='all';
+  COMPARE={mode:null, from:null, to:null};
+  const cf=document.getElementById('cFrom'), ct=document.getElementById('cTo'); if(cf) cf.value=''; if(ct) ct.value='';
   const gs=document.getElementById('grainSel'); if(gs) gs.value='all';
   const df=document.getElementById('dFrom'), dt=document.getElementById('dTo');
   if(df) df.value=''; if(dt) dt.value='';
@@ -1371,7 +1561,7 @@ function importDatasets(text){
 
 (function boot(){
   renderSaved();
-  wirePeriod();
+  wirePeriod(); wireCompare();
   document.getElementById('exportAll').addEventListener('click', exportAll);
   document.getElementById('importBtn').addEventListener('click', function(){
     document.getElementById('importFile').click();
