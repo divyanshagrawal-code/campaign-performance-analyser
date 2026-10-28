@@ -148,7 +148,12 @@
   #chanTbl tr[data-ch]{cursor:pointer}
   #chanTbl th{cursor:default}
   .note{color:var(--mut);font-size:12px;margin-top:12px}
-  #compareBar{margin-top:0}
+  .vsep{width:1px;align-self:stretch;background:var(--line);margin:2px 6px}
+  .dsbar label.inl{min-width:0}
+  .barnotes{flex-basis:100%;display:flex;gap:6px 18px;flex-wrap:wrap;font-size:12px;color:var(--mut);padding-left:72px}
+  .barnotes:empty,.barnotes .dt:empty{display:none}
+  #cmpMeta:not(:empty)::before{content:"Compare: ";font-weight:600;color:var(--ink2)}
+  #periodMeta:not(:empty)::before{content:"Period: ";font-weight:600;color:var(--ink2)}
   .cmptbl td,.cmptbl th{padding:8px 10px}
   .cmptbl th{cursor:default}
   .cmptbl td.chg.up{color:var(--ok);font-weight:600} .cmptbl td.chg.down{color:var(--bad);font-weight:600}
@@ -274,11 +279,8 @@
         <span style="color:var(--mut)">to</span>
         <input type="date" id="dTo" class="inp sm"/>
       </span>
-      <span class="spacer"></span>
-      <span class="dt" id="periodMeta" style="color:var(--mut);font-size:12px"></span>
-    </div>
-    <div class="dsbar" id="compareBar">
-      <label>Compare</label>
+      <span class="vsep" aria-hidden="true"></span>
+      <label class="inl">Compare</label>
       <select id="cmpSel">
         <option value="off">No comparison</option>
         <option value="prev">Previous period</option>
@@ -291,8 +293,10 @@
         <span style="color:var(--mut)">to</span>
         <input type="date" id="cTo" class="inp sm"/>
       </span>
-      <span class="spacer"></span>
-      <span class="dt" id="cmpMeta" style="color:var(--mut);font-size:12px"></span>
+      <div class="barnotes">
+        <span class="dt" id="periodMeta"></span>
+        <span class="dt" id="cmpMeta"></span>
+      </div>
     </div>
 
     <div class="dsbar" id="chanBar">
@@ -1340,7 +1344,7 @@ function syncCompareBar(data, dsRows){
     const r=data.meta.compareRange;
     if(!r) t = m==='custom'? 'Enter both compare dates.' : 'Pick a week, month, year or complete custom range under Period first.';
     else if(!data.meta.compareSends) t=`No ${data.meta.view==='all'?'':chanLabel(data.meta.view)+' '}sends in ${rangeLabel(r)} — nothing to compare with.`;
-    else t=`Comparing ${cur} with ${rangeLabel(r)} (${data.meta.compareSends} send${data.meta.compareSends>1?'s':''})`
+    else t=`${cur} vs ${rangeLabel(r)} (${data.meta.compareSends} send${data.meta.compareSends>1?'s':''} in the compare dates)`
       + (data.meta.compareOverlap? ' · <span class="cmpwarn">⚠ the compare dates fall inside the current period, so those sends are counted on both sides</span>' : '');
   }
   meta.innerHTML=t;
